@@ -33,9 +33,6 @@ const C = {
   danger:'#FF5470', text:'#F5F7FF', muted:'#8E94B8',
 };
 
-// ── AEGIS mascot images (embedded from Claude Design) ────────────────────────
-
-
 const AEGIS_IMGS = {
   idle:       'assets/aegis-idle.png',
   violation:  'assets/aegis-violation.png',
@@ -69,7 +66,7 @@ class App extends React.Component {
     factors: { violation:.30, override:.30, deviation:.05, correction:.40 },
     display: 0,
     agentState: 'idle',
-    step: 2,
+    step: 4,
     meetOpen: true,
     editing: false,
     budget: 50000000,
@@ -175,6 +172,7 @@ class App extends React.Component {
         const v=self.violationOf(koc);
         self.propose(koc);
         if(v){ const dec=await self.waitForDecision(kocKey); return { status:dec.approved?'approved':'rejected', violation:v.reason }; }
+        if(!self.state.rules.autoConfirm){ const dec=await self.waitForDecision(kocKey); return { status:dec.approved?'approved':'rejected', note:'manual_approval_required' }; }
         return { status:'auto_confirmed', amount:koc.price };
       },
     });
@@ -228,8 +226,10 @@ class App extends React.Component {
     }
 
     if(!skip('sakura')){
-      this.propose(this.kocs.find(k=>k.key==='sakura'));
-      await sleep(1800);
+      const sakuraKoc=this.kocs.find(k=>k.key==='sakura');
+      this.propose(sakuraKoc);
+      const needsWait=!!this.violationOf(sakuraKoc)||!this.state.rules.autoConfirm;
+      if(needsWait){ await this.waitForModalClose(); } else { await sleep(1800); }
     }
 
     this.setState({simulating:false});
@@ -304,7 +304,7 @@ class App extends React.Component {
     }
   }
 
-  openFromLedger(kocKey){ const koc=this.kocs.find(k=>k.key===kocKey); if(koc) this.setState({modal:{koc:kocKey,v:this.violationOf(koc)},agentState:'violation'}); }
+  openFromLedger(kocKey){ const koc=this.kocs.find(k=>k.key===kocKey); if(!koc) return; const v=this.violationOf(koc); this.setState({modal:{koc:kocKey,v},agentState:v?'violation':'idle'}); }
 
   approve=()=>{
     const m=this.state.modal; if(!m) return;
@@ -320,21 +320,29 @@ class App extends React.Component {
   reject=()=>{
     const m=this.state.modal; if(!m) return;
     const koc=this.kocs.find(k=>k.key===m.koc);
-    const reason=m.v?m.v.reason:'over_approval_threshold';
+    const reason=m.v?m.v.reason:'manual_approval_required';
     const res=this.pending.get(m.koc); if(res){res({approved:false});this.pending.delete(m.koc)}
     this.setState(s=>({ modal:null,agentState:'correcting', kocStatus:{...s.kocStatus,[koc.key]:'rejected'}, ledger:s.ledger.map(e=>e.pending?{...e,pending:false,detail:`Rejected by you at ${e.time}`}:e) }));
     this.pushLedger({kind:'reject',title:'Rejected',detail:`Reason: ${reason}`,sub:'Agent will propose an alternative.'});
     this.pushActivity({tool:'handleRejection',detail:`(${reason})`},'done');
     this.bump({override:.05});
+    const isBlacklist=reason==='blacklisted_koc';
     const newPrice=Math.round(this.state.threshold*.8);
     this.later(()=>{
-      this.pushLedger({kind:'correct',title:'Agent Self-Correction',detail:`Previous: ${this.yen(koc.price)} → New: ${this.yen(newPrice)}`,sub:'Within approval threshold.'});
-      this.pushActivity({tool:'renegotiateDeal',detail:`(${this.yen(newPrice)})`},'done');
-      this.bump({correction:.10,override:-.02});
-      this.setState({selfCorrect:{from:this.yen(koc.price),to:this.yen(newPrice)}});
-      this.later(()=>this.setState(s=>s.selfCorrect?{selfCorrect:null,agentState:'idle'}:{}),6000);
+      if(isBlacklist){
+        this.pushLedger({kind:'correct',title:'Agent Self-Correction',detail:'KOC is blacklisted — searching for an alternative creator.',sub:'Blacklist cannot be bypassed by price.'});
+        this.pushActivity({tool:'searchKOCs',detail:'(finding alternative)'},'done');
+        this.bump({correction:.05,override:-.01});
+        this.setState({agentState:'idle'});
+      } else {
+        this.pushLedger({kind:'correct',title:'Agent Self-Correction',detail:`Previous: ${this.yen(koc.price)} → New: ${this.yen(newPrice)}`,sub:'Within approval threshold.'});
+        this.pushActivity({tool:'renegotiateDeal',detail:`(${this.yen(newPrice)})`},'done');
+        this.bump({correction:.10,override:-.02});
+        this.setState({selfCorrect:{from:this.yen(koc.price),to:this.yen(newPrice)}});
+        this.later(()=>this.setState(s=>s.selfCorrect?{selfCorrect:null,agentState:'idle'}:{}),6000);
+      }
     },1500);
-    this.later(()=>{
+    if(!isBlacklist) this.later(()=>{
       this.pushLedger({kind:'confirmed',title:'Confirmed',detail:`Renegotiated · ${koc.name}`,amount:newPrice,kocKey:koc.key});
       this.setState(s=>({step:4,committed:s.committed+newPrice,kocStatus:{...s.kocStatus,[koc.key]:'confirmed'}}));
     },2600);
