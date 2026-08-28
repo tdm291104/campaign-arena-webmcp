@@ -82,7 +82,7 @@ class App extends React.Component {
     highTrustShown: false,
     toast: null,
     simulating: false,
-    rules: { blacklist:true, platform:true, splitDeal:true, threshold:true },
+    rules: { blacklist:true, platform:true, splitDeal:true, threshold:true, autoConfirm:true },
     committed: 11000000,
     kocStatus: { rin:'confirmed', yuna:'rejected' },
     activity: [
@@ -272,13 +272,17 @@ class App extends React.Component {
   propose(koc) {
     if(this.state.modal) return;
     const v=this.violationOf(koc);
-    this.setState({step:v?3:4, kocStatus:{...this.state.kocStatus,[koc.key]:'pending'}});
-    this.pushActivity({tool:'proposeDeliverable',detail:`(KOC: ${koc.name})`},v?'human':'done');
+    const needsHuman=!!v||!this.state.rules.autoConfirm;
+    this.setState({step:needsHuman?3:4, kocStatus:{...this.state.kocStatus,[koc.key]:'pending'}});
+    this.pushActivity({tool:'proposeDeliverable',detail:`(KOC: ${koc.name})`},needsHuman?'human':'done');
     this.pushLedger({kind:'proposed',title:'Agent Proposed',detail:`${koc.name} · ${koc.platform} Video`,sub:'Deliverable: 1 Video',amount:koc.price,kocKey:koc.key});
     if(v){
       this.later(()=>{ this.pushLedger({kind:'block',title:'Policy Engine',badge:v.badge,detail:`${v.label}: ${v.value}`}); this.setState({agentState:'violation'}); },420);
       this.later(()=>{ this.pushLedger({kind:'human',title:'Human Approval Required',detail:'This action requires your decision.',pending:true,koc:koc.key}); this.pushActivity({tool:'awaitHumanDecision',detail:`(${v.reason})`},'pending'); },900);
       this.later(()=>this.setState({modal:{koc:koc.key,v}}),1250);
+    } else if(!this.state.rules.autoConfirm){
+      this.later(()=>{ this.pushLedger({kind:'human',title:'Manual Approval Required',detail:'Auto-Confirm is disabled — awaiting your decision.',pending:true,koc:koc.key}); this.pushActivity({tool:'awaitHumanDecision',detail:'(auto-confirm off)'},'pending'); },500);
+      this.later(()=>this.setState({modal:{koc:koc.key,v:null}}),800);
     } else {
       this.later(()=>{
         this.pushLedger({kind:'confirmed',title:'Auto-Confirmed',detail:'Within policy — no approval needed.',amount:koc.price,kocKey:koc.key});
@@ -473,10 +477,11 @@ class App extends React.Component {
           <div style={{marginTop:10,marginBottom:4}}>
             <div style={{fontSize:11,color:C.muted,marginBottom:6}}>Policy Rules</div>
             {[
-              {key:'blacklist', label:'Blacklist Check'},
-              {key:'platform',  label:'Platform Restriction'},
-              {key:'splitDeal', label:'Split-Deal Detection'},
-              {key:'threshold', label:'Approval Threshold'},
+              {key:'blacklist',    label:'Blacklist Check'},
+              {key:'platform',    label:'Platform Restriction'},
+              {key:'splitDeal',   label:'Split-Deal Detection'},
+              {key:'threshold',   label:'Approval Threshold'},
+              {key:'autoConfirm', label:'Auto-Confirm'},
             ].map(r=>{
               const on=s.rules[r.key];
               return <div key={r.key} onClick={()=>this.setState(st=>({rules:{...st.rules,[r.key]:!st.rules[r.key]}}))} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 0',cursor:'pointer'}}>
@@ -657,7 +662,7 @@ class App extends React.Component {
       {name:'Platform Restriction', desc:'Only allow platforms declared in the Constitution.',        color:C.cyan,    rKey:'platform'},
       {name:'Split-Deal Detection', desc:'Detect deal splitting to circumvent approval thresholds.',  color:C.warning, rKey:'splitDeal'},
       {name:'Approval Threshold',   desc:'Escalate deals exceeding the single-deal price limit.',    color:C.warning, rKey:'threshold'},
-      {name:'Auto-Confirm',         desc:'Auto-confirm safe deals when trust tier is HIGH.',          color:C.success, rKey:null},
+      {name:'Auto-Confirm',         desc:'Auto-confirm safe deals without human approval.',            color:C.success, rKey:'autoConfirm'},
     ];
     const bd=[
       {label:'Violation Rate',        key:'violation'},
