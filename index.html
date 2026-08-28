@@ -82,6 +82,7 @@ class App extends React.Component {
     highTrustShown: false,
     toast: null,
     simulating: false,
+    currentMission: 'Find beauty KOCs for TikTok campaign',
     rules: { blacklist:true, platform:true, splitDeal:true, threshold:true, autoConfirm:true },
     committed: 11000000,
     kocStatus: { rin:'confirmed', yuna:'rejected', kira:'confirmed' },
@@ -150,9 +151,17 @@ class App extends React.Component {
       inputSchema:{ type:'object', properties:{ platform:{type:'string',description:'Filter by platform (TikTok, Instagram, YouTube)'}, category:{type:'string',description:'Filter by category (Beauty, Lifestyle, Skincare)'} } },
       execute:async(input)=>{
         const{platform,category}=input||{};
-        return self.kocs
+        const parts=[];
+        if(category) parts.push(category);
+        parts.push('KOCs');
+        if(platform) parts.push(`for ${platform} campaign`);
+        self.setState({currentMission:`Find ${parts.join(' ')}`, step:0});
+        self.pushActivity({tool:'searchKOCs',detail:`(${[platform,category].filter(Boolean).join(', ')||'all'})`},'running');
+        const results=self.kocs
           .filter(k=>(!platform||k.platform===platform)&&(!category||k.category===category))
           .map(k=>({key:k.key,name:k.name,platform:k.platform,engagement:k.engagement,price:k.price}));
+        self.setState(s=>({activity:s.activity.map((a,i)=>i===s.activity.length-1?{...a,status:'done'}:a), step:1}));
+        return results;
       },
     });
     document.modelContext.registerTool({
@@ -200,9 +209,10 @@ class App extends React.Component {
     const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     const skip=key=>!!this.state.kocStatus[key];
 
+    this.setState({currentMission:'Find Beauty KOCs for TikTok campaign', step:0});
     this.pushActivity({tool:'searchKOCs',detail:'(platform: TikTok, category: Beauty)'},'running');
     await sleep(1600);
-    this.setState(s=>({activity:s.activity.map((a,i)=>i===s.activity.length-1?{...a,status:'done'}:a)}));
+    this.setState(s=>({activity:s.activity.map((a,i)=>i===s.activity.length-1?{...a,status:'done'}:a), step:1}));
     await sleep(900);
 
     if(!skip('luna')){
@@ -509,7 +519,7 @@ class App extends React.Component {
         {/* Mission stepper */}
         <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:18}}>
           <div style={{fontSize:10,fontWeight:600,letterSpacing:'.12em',color:C.muted,marginBottom:10}}>CURRENT MISSION</div>
-          <div style={{fontSize:13,fontWeight:500,marginBottom:14}}>Find 3 beauty KOCs for TikTok campaign</div>
+          <div style={{fontSize:13,fontWeight:500,marginBottom:14}}>{s.currentMission}</div>
           <div style={{display:'flex',alignItems:'center'}}>
             {this.stepLabels.map((lbl,i)=>{
               const done=i<s.step, cur=i===s.step;
@@ -773,7 +783,7 @@ class App extends React.Component {
     const status=step>=4?'Completed':violations>0?'In Progress — Violations Detected':'In Progress';
     const missions=[
       {
-        title:'Find beauty KOCs for TikTok campaign',
+        title:s.currentMission,
         meta:`Budget ${this.yen(s.budget)} · ${confirmed} deal${confirmed!==1?'s':''} confirmed · ${violations} violation${violations!==1?'s':''}`,
         status, done:step, tone, live:true,
       },
