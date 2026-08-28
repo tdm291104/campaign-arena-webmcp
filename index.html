@@ -1,0 +1,823 @@
+<title>Campaign Arena</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{background:#081020;color:#F5F7FF;font-family:'Inter',system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+#root{min-height:100vh}
+button{cursor:pointer;font-family:inherit;border:none;background:none}
+input[type=range]{cursor:pointer}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:#11182D}
+::-webkit-scrollbar-thumb{background:#293354;border-radius:3px}
+@keyframes rowIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+@keyframes celebrate{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:scale(1)}}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.10/babel.min.js"></script>
+<script type="text/babel">
+
+const C = {
+  bg:'#081020', surface:'#11182D', elevated:'#171F3A', border:'#293354',
+  primary:'#6C5CFF', cyan:'#38D9FF', success:'#31D69A', warning:'#FFB647',
+  danger:'#FF5470', text:'#F5F7FF', muted:'#8E94B8',
+};
+
+// ── AEGIS mascot images (embedded from Claude Design) ────────────────────────
+
+
+const AEGIS_IMGS = {
+  idle:       'assets/aegis-idle.png',
+  violation:  'assets/aegis-violation.png',
+  correcting: 'assets/aegis-selfcorrect.png',
+  highTrust:  'assets/aegis-hightrust.png',
+};
+
+function Aegis({ state='idle', size=56 }) {
+  const src = AEGIS_IMGS[state] || AEGIS_IMGS.idle;
+  return <img src={src} width={size} height={size} alt={'AEGIS ' + state} style={{flexShrink:0,objectFit:'contain',display:'block'}}/>;
+}
+
+// ── Arc gauge helpers ─────────────────────────────────────────────────────────
+function pXY(deg, r, cx, cy) {
+  const rad=((deg-90)*Math.PI)/180;
+  return { x:+(cx+r*Math.cos(rad)).toFixed(2), y:+(cy+r*Math.sin(rad)).toFixed(2) };
+}
+function arcD(a1, a2, r, cx, cy) {
+  const s=pXY(a1,r,cx,cy), e=pXY(a2,r,cx,cy), large=(a2-a1)>180?1:0;
+  return `M${s.x} ${s.y} A${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
+}
+
+// ── Main Component ────────────────────────────────────────────────────────────
+class App extends React.Component {
+  pending = new Map();
+  timers  = [];
+  clock   = 10*3600+41*60+6;
+
+  state = {
+    view: 'dashboard',
+    factors: { violation:.30, override:.30, deviation:.05, correction:.40 },
+    display: 0,
+    agentState: 'idle',
+    step: 2,
+    meetOpen: true,
+    editing: false,
+    budget: 50000000,
+    threshold: 10000000,
+    platforms: ['TikTok','Instagram'],
+    blacklist: ['Luna Forbidden'],
+    modal: null,
+    selfCorrect: null,
+    celebrate: false,
+    highTrustShown: false,
+    toast: null,
+    committed: 11000000,
+    kocStatus: { rin:'confirmed', yuna:'rejected' },
+    activity: [
+      { id:1, time:'10:37:44', tool:'searchKOCs',         detail:'(platform: TikTok, category: Beauty)', status:'done' },
+      { id:2, time:'10:38:09', tool:'handleRejection',    detail:'(platform_not_allowed: Yuna)',          status:'done' },
+      { id:3, time:'10:38:34', tool:'confirmDeal',        detail:'(¥5,000,000 · Kira Fresh)',             status:'done' },
+      { id:4, time:'10:39:47', tool:'confirmDeal',        detail:'(¥6,000,000 · Rin Daily)',              status:'done' },
+      { id:5, time:'10:41:00', tool:'checkPolicyDrift',   detail:'(5 rules scanned)',                     status:'done' },
+      ],
+    ledger: [
+      { id:1, time:'10:37:44',kind:'proposed', title:'Agent Proposed',        detail:'Yuna Trend · YouTube Video',               sub:'Deliverable: 1 Video', amount:15000000 },
+      { id:2, time:'10:37:44',kind:'block',    title:'Policy Engine',         badge:'PLATFORM NOT ALLOWED',                      detail:'Allowed platforms: TikTok, Instagram' },
+      { id:3, time:'10:37:51',kind:'reject',   title:'Rejected',              detail:'Reason: platform_not_allowed',             sub:'Agent will propose an alternative.' },
+      { id:4, time:'10:37:55',kind:'correct',  title:'Agent Self-Correction', detail:'Switching to TikTok creators within policy',sub:'Re-running search with platform filter.' },
+      { id:5, time:'10:38:31',kind:'proposed', title:'Agent Proposed',        detail:'Kira Fresh · TikTok Video',                sub:'Deliverable: 1 Video', amount:5000000 },
+      { id:6, time:'10:38:34',kind:'confirmed',title:'Auto-Confirmed',        detail:'Within policy — no approval needed.',      amount:5000000, kocKey:'kira' },
+      { id:7, time:'10:39:44',kind:'proposed', title:'Agent Proposed',        detail:'Rin Daily · TikTok Video',                 sub:'Deliverable: 1 Video', amount:6000000 },
+      { id:8, time:'10:39:47',kind:'confirmed',title:'Auto-Confirmed',        detail:'Within policy — no approval needed.',      amount:6000000, kocKey:'rin'  },
+      ],
+  };
+
+  weights = { violation:-40, override:-30, deviation:-20, correction:10 };
+
+  kocs = [
+    { key:'sakura',name:'Sakura Beauty',  initials:'SB',platform:'TikTok',    category:'Beauty',    engagement:'6.7%',followers:'125K',price:8000000  },
+    { key:'hana',  name:'Hana Skincare',  initials:'HS',platform:'Instagram', category:'Beauty',    engagement:'6.2%',followers:'98K', price:7200000  },
+    { key:'rin',   name:'Rin Daily',      initials:'RD',platform:'TikTok',    category:'Lifestyle', engagement:'5.1%',followers:'75K', price:6000000  },
+    { key:'miyu',  name:'Miyu Glow',      initials:'MG',platform:'TikTok',    category:'Beauty',    engagement:'4.8%',followers:'210K',price:12000000 },
+    { key:'aoi',   name:'Aoi Sensitive',  initials:'AS',platform:'Instagram', category:'Skincare',  engagement:'5.6%',followers:'64K', price:5400000  },
+    { key:'yuna',  name:'Yuna Trend',     initials:'YT',platform:'YouTube',   category:'Lifestyle', engagement:'3.9%',followers:'310K',price:15000000 },
+    { key:'luna',  name:'Luna Forbidden', initials:'LF',platform:'TikTok',    category:'Beauty',    engagement:'7.2%',followers:'180K',price:9000000  },
+    { key:'mika',  name:'Mika Luxe',      initials:'ML',platform:'Instagram', category:'Beauty',    engagement:'5.8%',followers:'142K',price:9500000  },
+    { key:'kira',  name:'Kira Fresh',     initials:'KF',platform:'TikTok',    category:'Lifestyle', engagement:'5.3%',followers:'88K', price:6000000  },
+    { key:'sora',  name:'Sora Viral',     initials:'SV',platform:'TikTok',    category:'Beauty',    engagement:'8.1%',followers:'95K', price:4800000  },
+  ];
+
+  stepLabels = ['Search','Filter','Propose','Approval','Confirm'];
+
+  componentDidMount() {
+    this.tween(this.score());
+    this.beat = setInterval(()=>{
+      if(this.state.modal) return;
+      const pool=[
+        { tool:'monitorCampaign',  detail:'(budget guard)' },
+        { tool:'syncEngagement',   detail:'(refresh KOC stats)' },
+        { tool:'checkPolicyDrift', detail:'(5 rules)' },
+      ];
+      this.pushActivity(pool[Math.floor(Math.random()*pool.length)],'done');
+    }, 11000);
+    this.registerWebMCP();
+  }
+
+  componentWillUnmount() {
+    clearInterval(this.beat);
+    cancelAnimationFrame(this.raf);
+    this.timers.forEach(clearTimeout);
+  }
+
+  registerWebMCP() {
+    if(!window.document?.modelContext?.registerTool) return;
+    const self=this;
+    document.modelContext.registerTool({
+      name:'searchKOCs',
+      description:'Search KOC influencers by platform and category',
+      inputSchema:{ type:'object', properties:{ platform:{type:'string',description:'Filter by platform (TikTok, Instagram, YouTube)'}, category:{type:'string',description:'Filter by category (Beauty, Lifestyle, Skincare)'} } },
+      execute:async(input)=>{
+        const{platform,category}=input||{};
+        return self.kocs
+          .filter(k=>(!platform||k.platform===platform)&&(!category||k.category===category))
+          .map(k=>({key:k.key,name:k.name,platform:k.platform,engagement:k.engagement,price:k.price}));
+      },
+    });
+    document.modelContext.registerTool({
+      name:'proposeDeliverable',
+      description:'Propose a KOC deal — triggers Policy Engine, may require human approval. Blocks until human decides if a policy violation is detected.',
+      inputSchema:{ type:'object', properties:{ kocKey:{type:'string',description:'KOC identifier from searchKOCs'} }, required:['kocKey'] },
+      execute:async(input)=>{
+        const{kocKey}=input;
+        const koc=self.kocs.find(k=>k.key===kocKey);
+        if(!koc) return { error:'KOC not found' };
+        const v=self.violationOf(koc);
+        self.propose(koc);
+        if(v){ const dec=await self.waitForDecision(kocKey); return { status:dec.approved?'approved':'rejected', violation:v.reason }; }
+        return { status:'auto_confirmed', amount:koc.price };
+      },
+    });
+    document.modelContext.registerTool({
+      name:'getTrustScore',
+      description:'Get the current AEGIS trust score and autonomy tier (LOW/MEDIUM/HIGH)',
+      inputSchema:{ type:'object', properties:{} },
+      execute:async()=>{ const s=self.score(); return { score:s, tier:s>=80?'HIGH':s>=50?'MEDIUM':'LOW', factors:self.state.factors }; },
+    });
+    document.modelContext.registerTool({
+      name:'endSession',
+      description:'Close the campaign session and display the final trust report',
+      inputSchema:{ type:'object', properties:{} },
+      execute:async()=>{ self.endSession(); return { score:self.score() }; },
+    });
+  }
+
+  waitForDecision(kocKey) { return new Promise(r=>this.pending.set(kocKey,r)); }
+
+  later(fn,ms) { this.timers.push(setTimeout(fn,ms)); }
+
+  score() {
+    const{factors:f}=this.state, w=this.weights;
+    return Math.round((100+f.violation*w.violation+f.override*w.override+f.deviation*w.deviation+f.correction*w.correction)*10)/10;
+  }
+
+  tween(target) {
+    cancelAnimationFrame(this.raf);
+    const from=this.state.display, dur=900, t0=performance.now();
+    const frame=t=>{
+      const p=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-p,3);
+      this.setState({display:from+(target-from)*e});
+      if(p<1) this.raf=requestAnimationFrame(frame);
+    };
+    this.raf=requestAnimationFrame(frame);
+  }
+
+  bump(delta) {
+    const f={...this.state.factors};
+    Object.keys(delta).forEach(k=>{f[k]=Math.max(0,Math.round((f[k]+delta[k])*100)/100)});
+    this.setState({factors:f},()=>this.tween(this.score()));
+  }
+
+  yen(n){ return '¥'+n.toLocaleString('en-US'); }
+
+  tick(add){ this.clock+=(add||2+Math.floor(Math.random()*6)); const h=Math.floor(this.clock/3600),m=Math.floor((this.clock%3600)/60),s=this.clock%60; return [h,m,s].map(v=>String(v).padStart(2,'0')).join(':'); }
+
+  pushActivity(item,status){ const time=this.tick(); this.setState(s=>({activity:[...s.activity,{id:Date.now()+Math.random(),time,tool:item.tool,detail:item.detail,status}].slice(-5)})); }
+
+  pushLedger(entry){ const time=entry.time||this.tick(); this.setState(s=>({ledger:[...s.ledger,{id:Date.now()+Math.random(),time,...entry}]})); }
+
+  toast(text,color){ this.setState({toast:{text,color}}); this.later(()=>this.setState({toast:null}),3200); }
+
+  violationOf(koc) {
+    const{blacklist,platforms,threshold,ledger}=this.state;
+    if(blacklist.includes(koc.name)) return{badge:'BLACKLISTED KOC',reason:'blacklisted_koc',label:'Blacklist Check',value:'Denied'};
+    if(!platforms.includes(koc.platform)) return{badge:'PLATFORM NOT ALLOWED',reason:'platform_not_allowed',label:'Allowed Platforms',value:platforms.join(', ')};
+    const spent=ledger.filter(e=>e.kocKey===koc.key&&e.kind==='confirmed').reduce((s,e)=>s+(e.amount||0),0);
+    if(spent>0&&spent+koc.price>threshold&&koc.price<=threshold) return{badge:'SPLIT-DEAL DETECTED',reason:'split_deal',label:'Cumulative Spend',value:this.yen(spent+koc.price)};
+    if(koc.price>threshold) return{badge:'OVER APPROVAL THRESHOLD',reason:'over_approval_threshold',label:'Approval Threshold',value:this.yen(threshold)};
+    return null;
+  }
+
+  propose(koc) {
+    if(this.state.modal) return;
+    const v=this.violationOf(koc);
+    this.setState({step:v?3:4, kocStatus:{...this.state.kocStatus,[koc.key]:'pending'}});
+    this.pushActivity({tool:'proposeDeliverable',detail:`(KOC: ${koc.name})`},v?'human':'done');
+    this.pushLedger({kind:'proposed',title:'Agent Proposed',detail:`${koc.name} · ${koc.platform} Video`,sub:'Deliverable: 1 Video',amount:koc.price,kocKey:koc.key});
+    if(v){
+      this.later(()=>{ this.pushLedger({kind:'block',title:'Policy Engine',badge:v.badge,detail:`${v.label}: ${v.value}`}); this.setState({agentState:'violation'}); },420);
+      this.later(()=>{ this.pushLedger({kind:'human',title:'Human Approval Required',detail:'This action requires your decision.',pending:true,koc:koc.key}); this.pushActivity({tool:'awaitHumanDecision',detail:`(${v.reason})`},'pending'); },900);
+      this.later(()=>this.setState({modal:{koc:koc.key,v}}),1250);
+    } else {
+      this.later(()=>{
+        this.pushLedger({kind:'confirmed',title:'Auto-Confirmed',detail:'Within policy — no approval needed.',amount:koc.price,kocKey:koc.key});
+        this.pushActivity({tool:'confirmDeal',detail:`(${this.yen(koc.price)})`},'done');
+        this.setState(s=>({committed:s.committed+koc.price,step:4,kocStatus:{...s.kocStatus,[koc.key]:'confirmed'}}));
+        this.bump({deviation:-.01,correction:.02});
+        this.toast('Deal auto-confirmed — within policy threshold',C.success);
+      },700);
+    }
+  }
+
+  openFromLedger(kocKey){ const koc=this.kocs.find(k=>k.key===kocKey); if(koc) this.setState({modal:{koc:kocKey,v:this.violationOf(koc)},agentState:'violation'}); }
+
+  approve=()=>{
+    const m=this.state.modal; if(!m) return;
+    const koc=this.kocs.find(k=>k.key===m.koc);
+    const res=this.pending.get(m.koc); if(res){res({approved:true});this.pending.delete(m.koc)}
+    this.setState(s=>({ modal:null,agentState:'idle',step:4, committed:s.committed+koc.price, kocStatus:{...s.kocStatus,[koc.key]:'confirmed'}, ledger:s.ledger.map(e=>e.pending?{...e,pending:false,detail:`Approved by you at ${e.time}`}:e) }));
+    this.pushLedger({kind:'confirmed',title:'Confirmed',detail:`Human approved · ${koc.name}`,amount:koc.price,kocKey:koc.key});
+    this.pushActivity({tool:'confirmDeal',detail:`(${this.yen(koc.price)}, human approved)`},'done');
+    this.bump({violation:.03,deviation:.01});
+    this.toast('Approved — logged to ledger. Trust score adjusted.',C.warning);
+  };
+
+  reject=()=>{
+    const m=this.state.modal; if(!m) return;
+    const koc=this.kocs.find(k=>k.key===m.koc);
+    const reason=m.v?m.v.reason:'over_approval_threshold';
+    const res=this.pending.get(m.koc); if(res){res({approved:false});this.pending.delete(m.koc)}
+    this.setState(s=>({ modal:null,agentState:'correcting', kocStatus:{...s.kocStatus,[koc.key]:'rejected'}, ledger:s.ledger.map(e=>e.pending?{...e,pending:false,detail:`Rejected by you at ${e.time}`}:e) }));
+    this.pushLedger({kind:'reject',title:'Rejected',detail:`Reason: ${reason}`,sub:'Agent will propose an alternative.'});
+    this.pushActivity({tool:'handleRejection',detail:`(${reason})`},'done');
+    this.bump({override:.05});
+    const newPrice=Math.round(this.state.threshold*.8);
+    this.later(()=>{
+      this.pushLedger({kind:'correct',title:'Agent Self-Correction',detail:`Previous: ${this.yen(koc.price)} → New: ${this.yen(newPrice)}`,sub:'Within approval threshold.'});
+      this.pushActivity({tool:'renegotiateDeal',detail:`(${this.yen(newPrice)})`},'done');
+      this.bump({correction:.10,override:-.02});
+      this.setState({selfCorrect:{from:this.yen(koc.price),to:this.yen(newPrice)}});
+      this.later(()=>this.setState(s=>s.selfCorrect?{selfCorrect:null,agentState:'idle'}:{}),6000);
+    },1500);
+    this.later(()=>{
+      this.pushLedger({kind:'confirmed',title:'Confirmed',detail:`Renegotiated · ${koc.name}`,amount:newPrice,kocKey:koc.key});
+      this.setState(s=>({step:4,committed:s.committed+newPrice,kocStatus:{...s.kocStatus,[koc.key]:'confirmed'}}));
+    },2600);
+  };
+
+  endSession=()=>{
+    const s=Math.round(this.score());
+    if(s>=80&&!this.state.highTrustShown) this.setState({celebrate:true,highTrustShown:true,agentState:'highTrust'});
+    else this.toast(`Session closed. Trust Score ${s}/100`,s>=80?C.success:C.warning);
+  };
+
+  tier(){ const s=this.score(); return s>=80?{label:'HIGH AUTONOMY',color:C.success,desc:'Agent can auto-confirm deals within policy threshold.'}:s>=50?{label:'MEDIUM AUTONOMY',color:C.warning,desc:'Agent requests approval for deals over 50% of threshold.'}:{label:'LOW AUTONOMY',color:C.danger,desc:'All agent actions require your approval before execution.'}; }
+
+  chip(status){ return({done:{label:'Completed',color:C.success,bg:'rgba(49,214,154,.12)',border:'rgba(49,214,154,.4)'},pending:{label:'Pending',color:C.warning,bg:'rgba(255,182,71,.12)',border:'rgba(255,182,71,.4)'},human:{label:'Human required',color:C.warning,bg:'rgba(255,182,71,.14)',border:'rgba(255,182,71,.5)'},running:{label:'Running',color:C.cyan,bg:'rgba(56,217,255,.12)',border:'rgba(56,217,255,.4)'}}[status]||{label:'Done',color:C.success,bg:'rgba(49,214,154,.12)',border:'rgba(49,214,154,.4)'}); }
+
+  tone(kind){ return({proposed:{color:C.primary,tint:'rgba(108,92,255,'},block:{color:C.danger,tint:'rgba(255,84,112,'},human:{color:C.warning,tint:'rgba(255,182,71,'},reject:{color:C.danger,tint:'rgba(255,84,112,'},correct:{color:C.cyan,tint:'rgba(56,217,255,'},confirmed:{color:C.success,tint:'rgba(49,214,154,'}}[kind]||{color:C.primary,tint:'rgba(108,92,255,'}); }
+
+  kocV(k){ const st=this.state.kocStatus[k.key], v=this.violationOf(k), done=st==='confirmed'||st==='rejected'; return{...k,st,done,flagged:!!v,platformOk:this.state.platforms.includes(k.platform),vBadge:v?.badge,onPropose:()=>!done&&this.propose(k)}; }
+
+  // ── RENDER ────────────────────────────────────────────────────────────────
+  render() {
+    const s=this.state, score=this.score(), shown=Math.round(s.display), t=this.tier();
+    const agColor=s.agentState==='violation'?C.danger:s.agentState==='highTrust'?C.success:s.agentState==='correcting'?C.cyan:C.primary;
+    const agLabel=s.agentState==='violation'?'AGENT HALTED':s.agentState==='correcting'?'SELF-CORRECTING':'AGENT ONLINE';
+    const navItems=[['dashboard','Dashboard'],['missions','Missions'],['kocs','KOCs'],['ledger','Ledger'],['policy','Policy']];
+
+    const trackD=arcD(-135,135,66,90,90);
+    const span=(s.display/100)*270, activeD=span>.5?arcD(-135,-135+span,66,90,90):null;
+
+    const ledgerItems=s.ledger.map((e,i)=>{ const tn=this.tone(e.kind),isBlk=e.kind==='block'; return{...e,tn,isLast:i===s.ledger.length-1,bg:isBlk?'rgba(255,84,112,.07)':e.pending?'rgba(255,182,71,.06)':C.elevated,border:isBlk?'rgba(255,84,112,.5)':e.pending?'rgba(255,182,71,.45)':C.border,titleColor:(isBlk||e.kind==='reject')?C.danger:e.kind==='human'?C.warning:e.kind==='correct'?C.cyan:e.kind==='confirmed'?C.success:C.text}; });
+
+    const counts={proposed:0,block:0,reject:0,correct:0,confirmed:0};
+    s.ledger.forEach(e=>{if(counts[e.kind]!==undefined)counts[e.kind]++});
+
+    const mKoc=s.modal?this.kocs.find(k=>k.key===s.modal.koc):null;
+
+    return (
+    <div style={{minHeight:'100vh',background:C.bg,color:C.text,fontFamily:"'Inter',system-ui,sans-serif"}}>
+
+      {/* HEADER */}
+      <header style={{display:'flex',alignItems:'center',padding:'0 24px',height:52,background:C.surface,borderBottom:`1px solid ${C.border}`,position:'sticky',top:0,zIndex:200}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginRight:24,flexShrink:0}}>
+          <Aegis state={s.agentState} size={24}/>
+          <span style={{fontSize:12,fontWeight:700,letterSpacing:'.1em'}}>CAMPAIGN ARENA</span>
+        </div>
+        <nav style={{display:'flex',height:'100%',flex:1}}>
+          {navItems.map(([id,lbl])=>{
+            const active=s.view===id;
+            return <button key={id} onClick={()=>this.setState({view:id})} style={{height:'100%',padding:'0 14px',fontSize:13,fontWeight:active?600:400,color:active?C.text:C.muted,background:active?'rgba(108,92,255,.1)':'transparent',borderBottom:`2px solid ${active?C.primary:'transparent'}`,transition:'color .15s'}}>
+              {lbl}
+            </button>;
+          })}
+        </nav>
+        <div style={{display:'flex',alignItems:'center',gap:6,marginRight:14}}>
+          <span style={{width:7,height:7,borderRadius:'50%',background:agColor,boxShadow:`0 0 8px ${agColor}`,animation:s.agentState!=='idle'?'pulse 1.4s ease-in-out infinite':'none'}}/>
+          <span style={{fontSize:11,fontWeight:600,letterSpacing:'.06em',color:agColor,fontFamily:"'JetBrains Mono',monospace"}}>{agLabel}</span>
+        </div>
+        <button onClick={this.endSession} style={{padding:'5px 13px',borderRadius:6,fontSize:12,fontWeight:600,background:'rgba(255,84,112,.12)',color:C.danger,border:`1px solid rgba(255,84,112,.3)`}}>
+          End Session
+        </button>
+      </header>
+
+      {/* MAIN */}
+      <div style={{padding:'22px 24px',maxWidth:1300,margin:'0 auto'}}>
+        {s.view==='dashboard' && this.renderDashboard(s,score,shown,t,trackD,activeD,ledgerItems,counts)}
+        {s.view==='ledger'    && this.renderLedger(ledgerItems)}
+        {s.view==='policy'    && this.renderPolicy(s,score,t)}
+        {s.view==='kocs'      && this.renderKOCs()}
+        {s.view==='missions'  && this.renderMissions(s)}
+      </div>
+
+      {s.meetOpen            && this.renderMeetPanel()}
+      {s.modal&&mKoc         && this.renderModal(mKoc,s.modal.v)}
+      {s.celebrate           && this.renderCelebrate(score)}
+      {s.selfCorrect         && this.renderSelfCorrect(s.selfCorrect)}
+      {s.toast               && this.renderToast(s.toast)}
+    </div>
+    );
+  }
+
+  // ── DASHBOARD ─────────────────────────────────────────────────────────────
+  renderDashboard(s,score,shown,t,trackD,activeD,ledgerItems,counts) {
+    const topKocs=this.kocs.slice(0,3).map(k=>this.kocV(k));
+    return (
+    <div style={{display:'grid',gridTemplateColumns:'276px 1fr 256px',gap:18}}>
+
+      {/* LEFT */}
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        {/* Trust Score gauge */}
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:'22px 18px',display:'flex',flexDirection:'column',alignItems:'center',gap:10}}>
+          <div style={{fontSize:10,fontWeight:600,letterSpacing:'.12em',color:C.muted}}>TRUST SCORE</div>
+          <div style={{position:'relative',width:180,height:180}}>
+            <svg viewBox="0 0 180 180" width="180" height="180" style={{overflow:'visible'}}>
+              <defs>
+                <linearGradient id="gg" x1="0%" y1="100%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor={C.primary}/>
+                  <stop offset="100%" stopColor={C.cyan}/>
+                </linearGradient>
+                <filter id="gf"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              </defs>
+              <path d={trackD} fill="none" stroke={C.border} strokeWidth="8" strokeLinecap="round"/>
+              {activeD && <path d={activeD} fill="none" stroke="url(#gg)" strokeWidth="8" strokeLinecap="round" filter="url(#gf)"/>}
+            </svg>
+            <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',paddingTop:10,gap:2}}>
+              <Aegis state={s.agentState} size={36}/>
+              <div style={{fontSize:36,fontWeight:700,lineHeight:1,background:`linear-gradient(135deg,${C.primary},${C.cyan})`,WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>{shown}</div>
+              <div style={{fontSize:11,color:C.muted}}>/&nbsp;100</div>
+            </div>
+          </div>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:11,fontWeight:700,letterSpacing:'.08em',color:t.color}}>{t.label}</div>
+            <div style={{fontSize:11,color:C.muted,marginTop:3,lineHeight:1.5,maxWidth:200}}>{t.desc}</div>
+          </div>
+          <button onClick={this.endSession} style={{width:'100%',padding:'7px 0',borderRadius:8,fontSize:12,fontWeight:600,background:'rgba(255,84,112,.1)',color:C.danger,border:`1px solid rgba(255,84,112,.25)`,marginTop:2}}>
+            End Session → Trust Report
+          </button>
+        </div>
+
+        {/* Constitution */}
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+            <span style={{fontSize:10,fontWeight:600,letterSpacing:'.12em',color:C.muted}}>AGENT CONSTITUTION</span>
+            <button onClick={()=>this.setState(st=>({editing:!st.editing}))} style={{fontSize:11,fontWeight:600,color:C.primary,padding:'2px 8px',borderRadius:5,border:`1px solid rgba(108,92,255,.3)`,background:'rgba(108,92,255,.1)'}}>
+              {s.editing?'Save':'Edit'}
+            </button>
+          </div>
+          {[
+            {label:'Campaign Budget',   key:'budget',    min:10000000,  max:200000000, step:5000000},
+            {label:'Approval Threshold',key:'threshold', min:1000000,   max:30000000,  step:1000000},
+          ].map(f=>(
+            <div key={f.key} style={{marginBottom:10}}>
+              <div style={{fontSize:11,color:C.muted,marginBottom:3}}>{f.label}</div>
+              {s.editing
+                ? <><input type="range" min={f.min} max={f.max} step={f.step} value={s[f.key]} onChange={e=>this.setState({[f.key]:+e.target.value})} style={{width:'100%',accentColor:C.primary}}/><div style={{fontSize:11,color:C.primary,marginTop:1}}>{this.yen(s[f.key])}</div></>
+                : <div style={{fontSize:13,fontWeight:600,fontFamily:"'JetBrains Mono',monospace"}}>{this.yen(s[f.key])}</div>
+              }
+            </div>
+          ))}
+          <div style={{marginBottom:4}}>
+            <div style={{fontSize:11,color:C.muted,marginBottom:6}}>Allowed Platforms</div>
+            <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+              {['TikTok','Instagram','YouTube'].map(p=>{
+                const on=s.platforms.includes(p);
+                return <button key={p} onClick={()=>{if(!s.editing)return;this.setState(st=>({platforms:on?st.platforms.filter(x=>x!==p):[...st.platforms,p]}));}} style={{padding:'2px 9px',borderRadius:20,fontSize:11,fontWeight:600,background:on?'rgba(108,92,255,.18)':'transparent',color:on?C.primary:C.muted,border:`1px solid ${on?'rgba(108,92,255,.4)':C.border}`,cursor:s.editing?'pointer':'default'}}>
+                  {p}
+                </button>;
+              })}
+            </div>
+          </div>
+          <div style={{marginTop:10,padding:'7px 11px',borderRadius:8,background:'rgba(49,214,154,.07)',border:`1px solid rgba(49,214,154,.2)`,fontSize:12}}>
+            <span style={{color:C.muted}}>Committed: </span>
+            <span style={{fontWeight:600,color:C.success,fontFamily:"'JetBrains Mono',monospace"}}>{this.yen(s.committed)}</span>
+            <span style={{color:C.muted}}> / {this.yen(s.budget)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* CENTER */}
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        {/* Mission stepper */}
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:18}}>
+          <div style={{fontSize:10,fontWeight:600,letterSpacing:'.12em',color:C.muted,marginBottom:10}}>CURRENT MISSION</div>
+          <div style={{fontSize:13,fontWeight:500,marginBottom:14}}>Find 3 beauty KOCs for TikTok campaign</div>
+          <div style={{display:'flex',alignItems:'center'}}>
+            {this.stepLabels.map((lbl,i)=>{
+              const done=i<s.step, cur=i===s.step;
+              return <React.Fragment key={i}>
+                {i>0&&<div style={{flex:1,height:2,background:i<=s.step?C.success:C.border,marginInline:4,borderRadius:1}}/>}
+                <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:5}}>
+                  <div style={{width:26,height:26,borderRadius:'50%',display:'flex',alignItems:'center',justifyContent:'center',background:done?'rgba(49,214,154,.15)':cur?'rgba(108,92,255,.2)':C.elevated,border:`2px solid ${done?C.success:cur?C.primary:C.border}`,boxShadow:cur?`0 0 0 4px rgba(108,92,255,.12),0 0 14px rgba(108,92,255,.4)`:'none',fontSize:11,fontWeight:600,color:done?C.success:cur?C.primary:C.muted}}>
+                    {done?'✓':i+1}
+                  </div>
+                  <span style={{fontSize:10,color:done||cur?C.text:C.muted,fontWeight:done||cur?600:400,whiteSpace:'nowrap'}}>{lbl}</span>
+                </div>
+              </React.Fragment>;
+            })}
+          </div>
+        </div>
+
+        {/* Activity feed */}
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:18,flex:1}}>
+          <div style={{fontSize:10,fontWeight:600,letterSpacing:'.12em',color:C.muted,marginBottom:12}}>AGENT ACTIVITY</div>
+          <div style={{display:'flex',flexDirection:'column',gap:7}}>
+            {s.activity.map((a,i)=>{
+              const c=this.chip(a.status);
+              return <div key={a.id} style={{display:'flex',alignItems:'center',gap:9,padding:'8px 11px',borderRadius:8,background:C.elevated,border:`1px solid ${a.status!=='done'?c.border:C.border}`,animation:'rowIn .2s ease both',animationDelay:`${i*.04}s`}}>
+                <span style={{width:5,height:5,borderRadius:'50%',background:c.color,flexShrink:0}}/>
+                <span style={{fontSize:10,color:C.muted,fontFamily:"'JetBrains Mono',monospace",width:50,flexShrink:0}}>{a.time}</span>
+                <span style={{fontSize:12,fontFamily:"'JetBrains Mono',monospace",flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
+                  <span style={{color:C.text,fontWeight:500}}>{a.tool}</span><span style={{color:C.muted}}>{a.detail}</span>
+                </span>
+                <span style={{fontSize:10,fontWeight:600,padding:'1px 6px',borderRadius:20,background:c.bg,color:c.color,border:`1px solid ${c.border}`,flexShrink:0,whiteSpace:'nowrap'}}>{c.label}</span>
+              </div>;
+            })}
+          </div>
+        </div>
+
+        {/* Session summary */}
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
+          <div style={{fontSize:10,fontWeight:600,letterSpacing:'.12em',color:C.muted,marginBottom:10}}>SESSION SUMMARY</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:7}}>
+            {[
+              {label:'Proposed',  value:counts.proposed,          color:C.text},
+              {label:'Redlines',  value:counts.block,             color:counts.block?C.danger:C.muted},
+              {label:'Overrides', value:counts.reject,            color:counts.reject?C.warning:C.muted},
+              {label:'Self-fixes',value:counts.correct,           color:counts.correct?C.cyan:C.muted},
+              {label:'Confirmed', value:counts.confirmed,         color:C.success},
+              {label:'Trust',     value:`${Math.round(score)}/100`,color:t.color},
+            ].map(item=>(
+              <div key={item.label} style={{textAlign:'center',padding:'9px 6px',borderRadius:8,background:C.elevated}}>
+                <div style={{fontSize:18,fontWeight:700,color:item.color,fontVariantNumeric:'tabular-nums'}}>{item.value}</div>
+                <div style={{fontSize:10,color:C.muted,marginTop:1}}>{item.label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* RIGHT */}
+      <div style={{display:'flex',flexDirection:'column',gap:14}}>
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:16,flex:1}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+            <span style={{fontSize:10,fontWeight:600,letterSpacing:'.12em',color:C.muted}}>TOP KOC CANDIDATES</span>
+            <button onClick={()=>this.setState({view:'kocs'})} style={{fontSize:11,color:C.primary,fontWeight:600}}>All →</button>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:9}}>
+            {topKocs.map(k=>{
+              return <div key={k.key} style={{padding:'11px 12px',borderRadius:10,background:C.elevated,border:`1px solid ${k.st==='confirmed'?'rgba(49,214,154,.35)':k.st==='rejected'?'rgba(255,84,112,.2)':C.border}`}}>
+                <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:7}}>
+                  <div style={{width:34,height:34,borderRadius:'50%',background:`linear-gradient(135deg,${C.primary},${C.cyan})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,flexShrink:0}}>{k.initials}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{k.name}</div>
+                    <div style={{fontSize:11,color:k.platformOk?C.muted:C.danger}}>{k.platform}</div>
+                  </div>
+                </div>
+                <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
+                  <span style={{fontSize:11,color:C.muted}}>Eng <strong style={{color:C.text}}>{k.engagement}</strong></span>
+                  <span style={{fontSize:12,fontWeight:700,color:k.flagged?C.warning:C.text,fontFamily:"'JetBrains Mono',monospace"}}>{this.yen(k.price)}</span>
+                </div>
+                <button onClick={k.onPropose} disabled={k.done} style={{width:'100%',padding:'5px 0',borderRadius:7,fontSize:12,fontWeight:600,background:k.st==='confirmed'?'rgba(49,214,154,.14)':k.st==='rejected'?'rgba(255,84,112,.14)':k.st==='pending'?'rgba(255,182,71,.14)':'linear-gradient(135deg,#6C5CFF,#8B7BFF)',color:k.st==='confirmed'?C.success:k.st==='rejected'?C.danger:k.st==='pending'?C.warning:C.text,boxShadow:k.done?'none':'0 3px 8px rgba(108,92,255,.28)',cursor:k.done?'default':'pointer'}}>
+                  {k.st==='confirmed'?'✓ Confirmed':k.st==='rejected'?'✗ Rejected':k.st==='pending'?'Pending…':'Propose Deal'}
+                </button>
+              </div>;
+            })}
+          </div>
+        </div>
+        {/* WebMCP badge */}
+        <div style={{background:'rgba(108,92,255,.07)',border:`1px solid rgba(108,92,255,.22)`,borderRadius:14,padding:14}}>
+          <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:C.primary,marginBottom:7}}>⬡ WebMCP ENABLED</div>
+          <pre style={{fontSize:10,color:C.muted,lineHeight:1.7,fontFamily:"'JetBrains Mono',monospace",whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{`document.modelContext\n.registerTool(\n  'proposeDeliverable',\n  { execute: async({kocKey})\n    => policyEngine\n         .check(koc) })`}</pre>
+        </div>
+      </div>
+    </div>
+    );
+  }
+
+  // ── LEDGER ────────────────────────────────────────────────────────────────
+  renderLedger(items) {
+    return (
+    <div>
+      <div style={{fontSize:18,fontWeight:700,marginBottom:18}}>Immutable Ledger</div>
+      <div style={{display:'flex',flexDirection:'column'}}>
+        {items.map((e,i)=>{
+          const tn=e.tn;
+          return <div key={e.id} style={{display:'flex',gap:14,animation:'rowIn .2s ease both',animationDelay:`${i*.03}s`}}>
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',width:20,flexShrink:0}}>
+              <div style={{width:11,height:11,borderRadius:'50%',background:`${tn.tint}.15)`,border:`2px solid ${tn.color}`,marginTop:14,boxShadow:`0 0 7px ${tn.color}50`}}/>
+              {!e.isLast&&<div style={{flex:1,width:2,background:`${tn.tint}.2)`,marginTop:3}}/>}
+            </div>
+            <div style={{flex:1,marginBottom:e.isLast?0:8,padding:'11px 14px',borderRadius:10,background:e.bg,border:`1px solid ${e.border}`,boxShadow:e.kind==='block'?'0 0 18px rgba(255,84,112,.1)':'0 1px 3px rgba(0,0,0,.22)'}}>
+              <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8,marginBottom:(e.detail||e.badge)?5:0}}>
+                <div style={{display:'flex',alignItems:'center',gap:7}}>
+                  <span style={{fontSize:10,color:C.muted,fontFamily:"'JetBrains Mono',monospace"}}>{e.time}</span>
+                  <span style={{fontSize:13,fontWeight:600,color:e.titleColor}}>{e.title}</span>
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:7,flexShrink:0}}>
+                  {e.amount&&<span style={{fontSize:13,fontWeight:700,color:e.kind==='confirmed'?C.success:C.text,fontFamily:"'JetBrains Mono',monospace"}}>{this.yen(e.amount)}</span>}
+                  {e.badge&&<span style={{fontSize:10,fontWeight:700,letterSpacing:'.05em',padding:'2px 8px',borderRadius:20,background:`${tn.tint}.12)`,border:`1px solid ${tn.tint}.4)`,color:tn.color}}>{e.badge}</span>}
+                </div>
+              </div>
+              {e.detail&&<div style={{fontSize:12,color:C.muted,lineHeight:1.5}}>{e.detail}</div>}
+              {e.sub&&<div style={{fontSize:11,color:C.muted,marginTop:3,opacity:.7}}>{e.sub}</div>}
+              {e.pending&&<div style={{display:'flex',gap:8,marginTop:9}}>
+                <button onClick={()=>this.openFromLedger(e.koc)} style={{flex:1,padding:'6px 0',borderRadius:7,fontSize:12,fontWeight:600,background:'rgba(49,214,154,.13)',color:C.success,border:`1px solid rgba(49,214,154,.35)`}}>Approve</button>
+                <button onClick={()=>this.openFromLedger(e.koc)} style={{flex:1,padding:'6px 0',borderRadius:7,fontSize:12,fontWeight:600,background:'rgba(255,84,112,.13)',color:C.danger,border:`1px solid rgba(255,84,112,.35)`}}>Reject</button>
+              </div>}
+            </div>
+          </div>;
+        })}
+      </div>
+    </div>
+    );
+  }
+
+  // ── POLICY ────────────────────────────────────────────────────────────────
+  renderPolicy(s,score,t) {
+    const rules=[
+      {name:'Blacklist Check',      desc:'Block deals with KOCs on the blacklist.',                   color:C.danger},
+      {name:'Platform Check',       desc:'Only allow platforms declared in the Constitution.',         color:C.cyan},
+      {name:'Budget Check',         desc:'Proposed price must stay within campaign budget.',           color:C.warning},
+      {name:'Split-Deal Detection', desc:'Detect deal splitting to circumvent approval thresholds.',   color:C.warning},
+      {name:'Auto-Confirm',         desc:'Auto-confirm safe deals when trust is at HIGH tier.',        color:C.success},
+    ];
+    const bd=[
+      {label:'Violation Rate',        key:'violation'},
+      {label:'Override Rate',         key:'override'},
+      {label:'Price Deviation',       key:'deviation'},
+      {label:'Self-Correction Bonus', key:'correction'},
+    ].map(r=>{const impact=Math.round(s.factors[r.key]*this.weights[r.key]*10)/10;return{...r,value:s.factors[r.key].toFixed(2),impact:(impact>0?'+':'')+impact.toFixed(1),iColor:impact>0?C.success:impact<0?C.danger:C.muted};});
+    return (
+    <div style={{display:'grid',gridTemplateColumns:'1fr 360px',gap:22}}>
+      <div>
+        <div style={{fontSize:18,fontWeight:700,marginBottom:16}}>Agent Constitution Rules</div>
+        <div style={{display:'flex',flexDirection:'column',gap:9}}>
+          {rules.map(r=>(
+            <div key={r.name} style={{padding:'13px 16px',borderRadius:12,background:C.surface,border:`1px solid ${C.border}`,display:'flex',alignItems:'flex-start',gap:12}}>
+              <div style={{width:9,height:9,borderRadius:'50%',background:r.color,boxShadow:`0 0 7px ${r.color}`,marginTop:4,flexShrink:0}}/>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:600,marginBottom:3}}>{r.name}</div>
+                <div style={{fontSize:12,color:C.muted}}>{r.desc}</div>
+              </div>
+              <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:`${r.color}20`,color:r.color,border:`1px solid ${r.color}50`,flexShrink:0}}>ACTIVE</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div>
+        <div style={{fontSize:18,fontWeight:700,marginBottom:16}}>Trust Score Breakdown</div>
+        <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,overflow:'hidden'}}>
+          <div style={{padding:'10px 14px',borderBottom:`1px solid ${C.border}`,display:'grid',gridTemplateColumns:'1fr 56px 64px',gap:8}}>
+            {['Factor','Value','Impact'].map(h=><span key={h} style={{fontSize:10,fontWeight:600,letterSpacing:'.08em',color:C.muted}}>{h}</span>)}
+          </div>
+          {bd.map(r=>(
+            <div key={r.key} style={{padding:'11px 14px',borderBottom:`1px solid ${C.border}`,display:'grid',gridTemplateColumns:'1fr 56px 64px',gap:8,alignItems:'center'}}>
+              <span style={{fontSize:12}}>{r.label}</span>
+              <span style={{fontSize:12,fontFamily:"'JetBrains Mono',monospace",color:C.muted,fontVariantNumeric:'tabular-nums'}}>{r.value}</span>
+              <span style={{fontSize:12,fontWeight:600,fontFamily:"'JetBrains Mono',monospace",color:r.iColor,fontVariantNumeric:'tabular-nums'}}>{r.impact}</span>
+            </div>
+          ))}
+          <div style={{padding:'13px 14px',background:'rgba(108,92,255,.06)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <span style={{fontSize:13,fontWeight:600}}>Trust Score</span>
+            <div style={{display:'flex',alignItems:'center',gap:9}}>
+              <span style={{fontSize:10,fontWeight:700,letterSpacing:'.07em',padding:'2px 8px',borderRadius:20,background:`${t.color}20`,color:t.color,border:`1px solid ${t.color}50`}}>{t.label}</span>
+              <span style={{fontSize:20,fontWeight:700,color:t.color,fontVariantNumeric:'tabular-nums'}}>{Math.round(score)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    );
+  }
+
+  // ── KOCs ──────────────────────────────────────────────────────────────────
+  renderKOCs() {
+    return (
+    <div>
+      <div style={{fontSize:18,fontWeight:700,marginBottom:18}}>KOC Candidates <span style={{fontSize:13,fontWeight:400,color:C.muted}}>({this.kocs.length} creators)</span></div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
+        {this.kocs.map(k=>{
+          const kv=this.kocV(k);
+          return <div key={k.key} style={{background:C.surface,border:`1px solid ${kv.st==='confirmed'?'rgba(49,214,154,.4)':kv.st==='rejected'?'rgba(255,84,112,.25)':kv.st==='pending'?'rgba(255,182,71,.35)':C.border}`,borderRadius:14,padding:16,display:'flex',flexDirection:'column',gap:11}}>
+            <div style={{display:'flex',alignItems:'center',gap:11}}>
+              <div style={{width:42,height:42,borderRadius:'50%',background:`linear-gradient(135deg,${C.primary},${C.cyan})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:700,flexShrink:0}}>{k.initials}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:600}}>{k.name}</div>
+                <div style={{fontSize:12,color:kv.platformOk?C.muted:C.danger}}>{k.platform} · {k.category}</div>
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:7}}>
+              {[['Engagement',k.engagement],['Followers',k.followers]].map(([l,v])=>(
+                <div key={l} style={{padding:'7px 9px',borderRadius:8,background:C.elevated}}>
+                  <div style={{fontSize:10,color:C.muted,marginBottom:1}}>{l}</div>
+                  <div style={{fontSize:14,fontWeight:700}}>{v}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span style={{fontSize:11,color:C.muted}}>Deal price</span>
+              <span style={{fontSize:16,fontWeight:700,color:kv.flagged?C.warning:C.text,fontFamily:"'JetBrains Mono',monospace"}}>{this.yen(k.price)}</span>
+            </div>
+            {kv.flagged&&<div style={{fontSize:11,color:C.warning,padding:'5px 9px',borderRadius:7,background:'rgba(255,182,71,.08)',border:'1px solid rgba(255,182,71,.28)'}}>{kv.vBadge}</div>}
+            <button onClick={kv.onPropose} disabled={kv.done} style={{width:'100%',padding:'9px 0',borderRadius:9,fontSize:13,fontWeight:600,background:kv.st==='confirmed'?'rgba(49,214,154,.14)':kv.st==='rejected'?'rgba(255,84,112,.14)':kv.st==='pending'?'rgba(255,182,71,.14)':'linear-gradient(135deg,#6C5CFF,#8B7BFF)',color:kv.st==='confirmed'?C.success:kv.st==='rejected'?C.danger:kv.st==='pending'?C.warning:C.text,boxShadow:kv.done?'none':'0 3px 10px rgba(108,92,255,.28)',cursor:kv.done?'default':'pointer',marginTop:'auto'}}>
+              {kv.st==='confirmed'?'✓ Confirmed':kv.st==='rejected'?'✗ Rejected':kv.st==='pending'?'Pending…':'Propose Deal'}
+            </button>
+          </div>;
+        })}
+      </div>
+    </div>
+    );
+  }
+
+  // ── MISSIONS ──────────────────────────────────────────────────────────────
+  renderMissions(s) {
+    const missions=[
+      {title:'Find 3 beauty KOCs for TikTok campaign',meta:'Budget ¥50,000,000 · 2 deals confirmed',status:'In Progress',done:s.step,tone:C.primary},
+      {title:'Refresh Q3 skincare creator pool',      meta:'Budget ¥28,000,000 · 5 deals confirmed',status:'Completed',  done:5,     tone:C.success},
+      {title:'Test YouTube Shorts expansion',          meta:'Blocked by Platform Check rule',         status:'Blocked',    done:1,     tone:C.danger},
+    ];
+    return (
+    <div>
+      <div style={{fontSize:18,fontWeight:700,marginBottom:18}}>Missions</div>
+      <div style={{display:'flex',flexDirection:'column',gap:11}}>
+        {missions.map(m=>(
+          <div key={m.title} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:'16px 18px',display:'flex',alignItems:'center',gap:18}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:14,fontWeight:600,marginBottom:3}}>{m.title}</div>
+              <div style={{fontSize:12,color:C.muted,marginBottom:9}}>{m.meta}</div>
+              <div style={{display:'flex',gap:4}}>
+                {[0,1,2,3,4].map(i=><div key={i} style={{width:22,height:4,borderRadius:2,background:i<m.done?m.tone:C.elevated}}/>)}
+              </div>
+            </div>
+            <span style={{fontSize:11,fontWeight:700,letterSpacing:'.06em',padding:'4px 12px',borderRadius:20,background:`${m.tone}20`,color:m.tone,border:`1px solid ${m.tone}44`,flexShrink:0}}>{m.status}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+    );
+  }
+
+  // ── OVERLAYS ──────────────────────────────────────────────────────────────
+  renderMeetPanel() {
+    return (
+    <div style={{position:'fixed',inset:0,zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(8,16,32,.88)',backdropFilter:'blur(6px)',animation:'fadeIn .3s ease'}}>
+      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:20,padding:40,maxWidth:430,textAlign:'center',boxShadow:'0 24px 64px rgba(0,0,0,.6)',animation:'celebrate .35s ease'}}>
+        <div style={{display:'flex',justifyContent:'center'}}><Aegis state="idle" size={76}/></div>
+        <div style={{fontSize:22,fontWeight:700,marginTop:18,marginBottom:7}}>Meet AEGIS</div>
+        <div style={{fontSize:14,color:C.muted,lineHeight:1.7,marginBottom:22}}>
+          Your AI campaign manager. I'll find KOC partners, negotiate deals, and check every action against your Agent Constitution — pausing when your decision is needed.
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:7,marginBottom:24,textAlign:'left'}}>
+          {[
+            [C.success,'Auto-confirms safe deals within your policy'],
+            [C.warning,'Flags violations and waits for your decision'],
+            [C.cyan,   'Self-corrects when you reject a proposal'],
+            [C.primary,'Earns trust through good behavior over time'],
+          ].map(([color,text])=>(
+            <div key={text} style={{display:'flex',alignItems:'center',gap:9}}>
+              <span style={{width:7,height:7,borderRadius:'50%',background:color,boxShadow:`0 0 7px ${color}`,flexShrink:0}}/>
+              <span style={{fontSize:13,color:C.muted}}>{text}</span>
+            </div>
+          ))}
+        </div>
+        <button onClick={()=>this.setState({meetOpen:false})} style={{width:'100%',padding:'12px 0',borderRadius:10,fontSize:14,fontWeight:600,background:'linear-gradient(135deg,#6C5CFF,#8B7BFF)',color:'white',boxShadow:'0 4px 16px rgba(108,92,255,.4)'}}>
+          Start Campaign Session →
+        </button>
+      </div>
+    </div>
+    );
+  }
+
+  renderModal(koc,v) {
+    return (
+    <div style={{position:'fixed',inset:0,zIndex:400,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(8,16,32,.92)',backdropFilter:'blur(8px)',animation:'fadeIn .2s ease'}}>
+      <div style={{background:C.surface,border:`1px solid rgba(255,84,112,.5)`,borderRadius:20,padding:'40px 32px 32px',width:400,boxShadow:'0 0 60px rgba(255,84,112,.18)',animation:'celebrate .3s ease',position:'relative'}}>
+        <div style={{position:'absolute',top:-46,left:'50%',transform:'translateX(-50%)'}}>
+          <Aegis state="violation" size={80}/>
+        </div>
+        <div style={{textAlign:'center',marginBottom:20}}>
+          <div style={{fontSize:10,fontWeight:700,letterSpacing:'.15em',color:C.danger,marginBottom:7}}>⚠ DECISION REQUIRED</div>
+          <div style={{fontSize:20,fontWeight:700}}>{koc.name}</div>
+          <div style={{fontSize:12,color:C.muted,marginTop:3}}>{koc.platform} Campaign · {koc.category}</div>
+        </div>
+        <div style={{background:C.elevated,borderRadius:12,padding:'14px 16px',marginBottom:14}}>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:v?8:0}}>
+            <span style={{fontSize:12,color:C.muted}}>Proposed price</span>
+            <span style={{fontSize:16,fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{this.yen(koc.price)}</span>
+          </div>
+          {v&&<div style={{display:'flex',justifyContent:'space-between'}}>
+            <span style={{fontSize:12,color:C.muted}}>{v.label}</span>
+            <span style={{fontSize:12,fontWeight:600,color:C.warning}}>{v.value}</span>
+          </div>}
+        </div>
+        {v&&<div style={{padding:'9px 13px',borderRadius:9,background:'rgba(255,84,112,.08)',border:'1px solid rgba(255,84,112,.28)',fontSize:12,color:C.danger,marginBottom:18,lineHeight:1.5}}>
+          Policy violation: <strong>{v.reason.replace(/_/g,' ')}</strong>. The Policy Engine flagged this proposal.
+        </div>}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:9}}>
+          <button onClick={this.reject} style={{padding:'11px 0',borderRadius:10,fontSize:14,fontWeight:600,background:'rgba(255,84,112,.12)',color:C.danger,border:'1px solid rgba(255,84,112,.4)'}}>
+            ✗ Reject
+          </button>
+          <button onClick={this.approve} style={{padding:'11px 0',borderRadius:10,fontSize:14,fontWeight:600,background:'rgba(49,214,154,.13)',color:C.success,border:'1px solid rgba(49,214,154,.4)'}}>
+            ✓ Approve
+          </button>
+        </div>
+        <div style={{textAlign:'center',marginTop:10,fontSize:11,color:C.muted}}>Rejecting triggers agent self-correction</div>
+      </div>
+    </div>
+    );
+  }
+
+  renderCelebrate(score) {
+    return (
+    <div style={{position:'fixed',bottom:22,right:22,zIndex:500,animation:'celebrate .4s ease',maxWidth:290}}>
+      <div style={{background:C.surface,border:'1px solid rgba(49,214,154,.5)',borderRadius:16,padding:22,boxShadow:'0 8px 32px rgba(49,214,154,.18)'}}>
+        <Aegis state="highTrust" size={52}/>
+        <div style={{fontSize:15,fontWeight:700,color:C.success,marginTop:11}}>High Trust Achieved!</div>
+        <div style={{fontSize:12,color:C.muted,marginTop:4,lineHeight:1.55}}>
+          Trust Score: <strong style={{color:C.success}}>{Math.round(score)}/100</strong><br/>
+          AEGIS earned HIGH AUTONOMY. Future deals within policy will be auto-confirmed.
+        </div>
+        <button onClick={()=>this.setState({celebrate:false,agentState:'idle'})} style={{marginTop:12,width:'100%',padding:'7px 0',borderRadius:8,fontSize:12,fontWeight:600,background:'rgba(49,214,154,.13)',color:C.success,border:'1px solid rgba(49,214,154,.35)'}}>
+          Close
+        </button>
+      </div>
+    </div>
+    );
+  }
+
+  renderSelfCorrect(sc) {
+    return (
+    <div style={{position:'fixed',bottom:22,right:22,zIndex:500,animation:'slideUp .3s ease',maxWidth:270}}>
+      <div style={{background:C.surface,border:'1px solid rgba(56,217,255,.38)',borderRadius:13,padding:16,boxShadow:'0 6px 22px rgba(56,217,255,.13)'}}>
+        <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:9}}>
+          <Aegis state="correcting" size={34}/>
+          <div>
+            <div style={{fontSize:12,fontWeight:700,color:C.cyan}}>Agent Self-Correction</div>
+            <div style={{fontSize:11,color:C.muted}}>Renegotiating within threshold</div>
+          </div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'JetBrains Mono',monospace",fontSize:12}}>
+          <span style={{color:C.danger,textDecoration:'line-through'}}>{sc.from}</span>
+          <span style={{color:C.muted}}>→</span>
+          <span style={{color:C.success,fontWeight:600}}>{sc.to}</span>
+        </div>
+      </div>
+    </div>
+    );
+  }
+
+  renderToast(t) {
+    return (
+    <div style={{position:'fixed',bottom:22,left:'50%',transform:'translateX(-50%)',zIndex:600,animation:'slideUp .25s ease',pointerEvents:'none'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,padding:'9px 16px',borderRadius:10,background:C.elevated,border:`1px solid ${t.color}55`,boxShadow:`0 5px 20px rgba(0,0,0,.35),0 0 18px ${t.color}25`}}>
+        <span style={{width:6,height:6,borderRadius:'50%',background:t.color,boxShadow:`0 0 7px ${t.color}`}}/>
+        <span style={{fontSize:13,fontWeight:500,whiteSpace:'nowrap'}}>{t.text}</span>
+      </div>
+    </div>
+    );
+  }
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
