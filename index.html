@@ -81,6 +81,7 @@ class App extends React.Component {
     celebrate: false,
     highTrustShown: false,
     toast: null,
+    simulating: false,
     committed: 11000000,
     kocStatus: { rin:'confirmed', yuna:'rejected' },
     activity: [
@@ -182,6 +183,46 @@ class App extends React.Component {
   }
 
   waitForDecision(kocKey) { return new Promise(r=>this.pending.set(kocKey,r)); }
+
+  waitForModalClose() {
+    return new Promise(r=>{
+      setTimeout(()=>{
+        const poll=()=>this.state.modal?setTimeout(poll,250):r();
+        poll();
+      },1600);
+    });
+  }
+
+  simulateAgent = async () => {
+    if(this.state.simulating||this.state.modal) return;
+    this.setState({simulating:true});
+    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+    const skip=key=>!!this.state.kocStatus[key];
+
+    this.pushActivity({tool:'searchKOCs',detail:'(platform: TikTok, category: Beauty)'},'running');
+    await sleep(1600);
+    this.setState(s=>({activity:s.activity.map((a,i)=>i===s.activity.length-1?{...a,status:'done'}:a)}));
+    await sleep(900);
+
+    if(!skip('luna')){
+      this.propose(this.kocs.find(k=>k.key==='luna'));
+      await this.waitForModalClose();
+      await sleep(800);
+    }
+
+    if(!skip('miyu')){
+      this.propose(this.kocs.find(k=>k.key==='miyu'));
+      await this.waitForModalClose();
+      await sleep(800);
+    }
+
+    if(!skip('sakura')){
+      this.propose(this.kocs.find(k=>k.key==='sakura'));
+      await sleep(1800);
+    }
+
+    this.setState({simulating:false});
+  };
 
   later(fn,ms) { this.timers.push(setTimeout(fn,ms)); }
 
@@ -529,6 +570,9 @@ class App extends React.Component {
         <div style={{background:'rgba(108,92,255,.07)',border:`1px solid rgba(108,92,255,.22)`,borderRadius:14,padding:14}}>
           <div style={{fontSize:10,fontWeight:700,letterSpacing:'.1em',color:C.primary,marginBottom:7}}>⬡ WebMCP ENABLED</div>
           <pre style={{fontSize:10,color:C.muted,lineHeight:1.7,fontFamily:"'JetBrains Mono',monospace",whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{`document.modelContext\n.registerTool(\n  'proposeDeliverable',\n  { execute: async({kocKey})\n    => policyEngine\n         .check(koc) })`}</pre>
+          <button onClick={this.simulateAgent} disabled={s.simulating||!!s.modal} style={{marginTop:10,width:'100%',padding:'7px 0',borderRadius:8,fontSize:12,fontWeight:600,background:s.simulating?'rgba(108,92,255,.08)':'linear-gradient(135deg,rgba(108,92,255,.25),rgba(56,217,255,.15))',color:s.simulating?C.muted:C.primary,border:`1px solid ${s.simulating?C.border:'rgba(108,92,255,.4)'}`,cursor:s.simulating||s.modal?'not-allowed':'pointer',transition:'all .2s',letterSpacing:'.03em'}}>
+            {s.simulating?'⟳  Agent Running…':'▶  Simulate Agent'}
+          </button>
         </div>
       </div>
     </div>
