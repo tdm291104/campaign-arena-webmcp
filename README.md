@@ -1,59 +1,123 @@
-# Campaign Arena
+<div align="center">
+  <img src="assets/aegis-idle.png" alt="AEGIS" width="80" height="80">
+  <h3>Campaign Arena</h3>
+  <p>AI-powered KOC campaign manager that blocks and waits for human approval — built on WebMCP.</p>
 
-**AI-powered KOC campaign manager with WebMCP human-in-the-loop control.**
+  [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+  [![WebMCP](https://img.shields.io/badge/WebMCP-enabled-6C5CFF)](https://webmcp.dev)
+  [![No Build](https://img.shields.io/badge/build-none-31D69A)](index.html)
+</div>
 
-Built for the [WebMCP Hackathon](https://webmcp.devpost.com) — demonstrating how websites can expose structured tools to AI agents while keeping humans in control of critical decisions.
+---
+
+![Campaign Arena screenshot](docs/screenshot.png)
 
 ## What it does
 
-Campaign Arena lets an AI agent (via WebMCP) manage influencer (KOC) marketing campaigns autonomously — finding creators, proposing deals, and running every action through a Policy Engine. When a violation is detected, the agent **blocks and waits** for human approval before proceeding.
+Campaign Arena lets an AI agent autonomously manage influencer (KOC) marketing campaigns — searching creators, proposing deals, and enforcing policy rules — while keeping a human in the loop for critical decisions.
 
-### 4 violation scenarios demonstrated
+Every deal proposal runs through a **Policy Engine**. When a violation is detected, the agent suspends execution and waits for a human to approve or reject before continuing. No silent overrides.
 
-| Violation | Trigger | Agent behavior |
-|---|---|---|
-| **Blacklist** | Propose Luna Forbidden | Hard block, agent self-corrects |
-| **Platform not allowed** | Propose Yuna Trend (YouTube) | Block, agent switches to TikTok |
-| **Split deal** | Propose Kira Fresh again (cumulative > ¥10M) | Flags budget split attempt |
-| **Over approval threshold** | Propose Miyu Glow (¥12M > ¥10M limit) | Escalates to human |
+## Features
 
-### AEGIS Trust Score
+- **Human-in-the-loop by design** — `proposeDeliverable` is a real async Promise that resolves only when you click Approve or Reject
+- **4 violation types** — blacklist, platform restriction, split-deal detection, and over-budget threshold
+- **AEGIS Trust Score** — agent earns or loses trust based on behavior; score drives autonomy level (LOW / MEDIUM / HIGH)
+- **Self-correction** — agent detects rejection reason and re-proposes with a corrected strategy
+- **Zero dependencies** — single HTML file, no install, no bundler
 
-The agent earns or loses trust based on behavior. Higher trust = more autonomy. The score updates live as the agent acts.
+## Getting Started
 
-## WebMCP Tools exposed
+### Prerequisites
 
-```js
-searchKOCs(platform?, category?)       // Search influencer database
-proposeDeliverable(kocKey)             // Propose deal — blocks on violation
-getTrustScore()                        // Current score + autonomy tier
-endSession()                           // Close session, show final report
-```
+- A browser that supports WebMCP:
+  - **ChatGPT desktop app** — in-app browser has WebMCP enabled by default
+  - **Chrome 149+** — enable `chrome://flags/#enable-webmcp-testing`
+- Or just a regular browser to explore the UI without an AI agent
 
-`proposeDeliverable` uses `waitForDecision()` — a real Promise that resolves only when the human clicks Approve or Reject in the UI.
-
-## How to run
-
-No build step. Single HTML file.
+### Run locally
 
 ```bash
-# Option 1: local file
+# Option 1 — open directly (works for UI, WebMCP needs a server on some browsers)
 open index.html
 
-# Option 2: local server
+# Option 2 — serve locally
 npx serve .
+# or
+python3 -m http.server 8080
 ```
 
-**To test with an AI agent:**
-- **ChatGPT desktop app** — open via the in-app browser (WebMCP enabled by default)
-- **Chrome 149+** — enable `chrome://flags/#enable-webmcp-testing`, then open the page
+No install step. No build step.
+
+## Usage
+
+### Exploring the UI
+
+Open `index.html` in any browser. The dashboard shows:
+
+- **KOC roster** — 10 influencers across TikTok, Instagram, YouTube
+- **Policy panel** — live budget, platform allowlist, blacklist, approval threshold
+- **Agent activity log** — every tool call the AI agent makes
+- **Campaign ledger** — full deal history with violation events
+
+Click **Propose Deal** on any KOC to trigger the Policy Engine manually.
+
+### Testing with an AI agent
+
+Open the page in a WebMCP-enabled browser, then instruct the agent:
+
+```
+Run a KOC campaign. Search for Beauty influencers on TikTok,
+propose 3 deals, and handle any policy violations.
+```
+
+The agent will call `searchKOCs` → `proposeDeliverable` → block on violations → resume after your decision.
+
+## WebMCP Tools
+
+The page registers 4 tools via `document.modelContext.registerTool`:
+
+| Tool | Description |
+|---|---|
+| `searchKOCs(platform?, category?)` | Search the KOC database with optional filters |
+| `proposeDeliverable(kocKey)` | Propose a deal — blocks execution if a policy violation is detected |
+| `getTrustScore()` | Returns current score, autonomy tier, and factor breakdown |
+| `endSession()` | Close the session and display the final trust report |
+
+### Violation scenarios
+
+| Scenario | How to trigger |
+|---|---|
+| Blacklist | Propose **Luna Forbidden** |
+| Platform not allowed | Propose **Yuna Trend** (YouTube, not in allowlist) |
+| Split deal | Propose **Kira Fresh** (¥5M already committed → cumulative exceeds threshold) |
+| Over approval threshold | Propose **Miyu Glow** (¥12M single deal > ¥10M limit) |
+
+## How `waitForDecision` works
+
+```js
+// Agent calls proposeDeliverable → violation detected → execution suspends
+waitForDecision(kocKey) {
+  return new Promise(resolve => this.pending.set(kocKey, resolve));
+}
+
+// Human clicks Approve or Reject → Promise resolves → agent continues
+approve(kocKey) {
+  this.pending.get(kocKey)?.({ approved: true });
+}
+```
+
+The AI agent's tool call stays open until the human acts. This is the core human-in-the-loop primitive.
 
 ## Stack
 
-- React 18 + Babel standalone (no bundler)
-- WebMCP (`document.modelContext.registerTool`)
-- Single `index.html` — zero dependencies to install
+| | |
+|---|---|
+| UI | React 18 + Babel standalone (no bundler) |
+| Protocol | WebMCP — `document.modelContext.registerTool` |
+| Assets | 4 AEGIS mascot states (idle / violation / correcting / high-trust) |
+| Hosting | Single `index.html` — deploy anywhere |
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
