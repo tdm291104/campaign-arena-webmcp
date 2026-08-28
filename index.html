@@ -653,11 +653,11 @@ class App extends React.Component {
   // ── POLICY ────────────────────────────────────────────────────────────────
   renderPolicy(s,score,t) {
     const rules=[
-      {name:'Blacklist Check',      desc:'Block deals with KOCs on the blacklist.',                   color:C.danger},
-      {name:'Platform Check',       desc:'Only allow platforms declared in the Constitution.',         color:C.cyan},
-      {name:'Budget Check',         desc:'Proposed price must stay within campaign budget.',           color:C.warning},
-      {name:'Split-Deal Detection', desc:'Detect deal splitting to circumvent approval thresholds.',   color:C.warning},
-      {name:'Auto-Confirm',         desc:'Auto-confirm safe deals when trust is at HIGH tier.',        color:C.success},
+      {name:'Blacklist Check',      desc:'Block deals with KOCs on the blacklist.',                  color:C.danger,  rKey:'blacklist'},
+      {name:'Platform Restriction', desc:'Only allow platforms declared in the Constitution.',        color:C.cyan,    rKey:'platform'},
+      {name:'Split-Deal Detection', desc:'Detect deal splitting to circumvent approval thresholds.',  color:C.warning, rKey:'splitDeal'},
+      {name:'Approval Threshold',   desc:'Escalate deals exceeding the single-deal price limit.',    color:C.warning, rKey:'threshold'},
+      {name:'Auto-Confirm',         desc:'Auto-confirm safe deals when trust tier is HIGH.',          color:C.success, rKey:null},
     ];
     const bd=[
       {label:'Violation Rate',        key:'violation'},
@@ -670,16 +670,24 @@ class App extends React.Component {
       <div>
         <div style={{fontSize:18,fontWeight:700,marginBottom:16}}>Agent Constitution Rules</div>
         <div style={{display:'flex',flexDirection:'column',gap:9}}>
-          {rules.map(r=>(
-            <div key={r.name} style={{padding:'13px 16px',borderRadius:12,background:C.surface,border:`1px solid ${C.border}`,display:'flex',alignItems:'flex-start',gap:12}}>
-              <div style={{width:9,height:9,borderRadius:'50%',background:r.color,boxShadow:`0 0 7px ${r.color}`,marginTop:4,flexShrink:0}}/>
+          {rules.map(r=>{
+            const on=r.rKey?s.rules[r.rKey]:score>=80;
+            const toggle=r.rKey?()=>this.setState(st=>({rules:{...st.rules,[r.rKey]:!st.rules[r.rKey]}})):null;
+            return(
+            <div key={r.name} onClick={toggle} style={{padding:'13px 16px',borderRadius:12,background:C.surface,border:`1px solid ${on?C.border:'rgba(255,84,112,.2)'}`,display:'flex',alignItems:'flex-start',gap:12,cursor:toggle?'pointer':'default',opacity:on?1:.7,transition:'opacity .2s'}}>
+              <div style={{width:9,height:9,borderRadius:'50%',background:on?r.color:C.muted,boxShadow:on?`0 0 7px ${r.color}`:'none',marginTop:4,flexShrink:0}}/>
               <div style={{flex:1}}>
                 <div style={{fontSize:13,fontWeight:600,marginBottom:3}}>{r.name}</div>
                 <div style={{fontSize:12,color:C.muted}}>{r.desc}</div>
               </div>
-              <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:`${r.color}20`,color:r.color,border:`1px solid ${r.color}50`,flexShrink:0}}>ACTIVE</span>
-            </div>
-          ))}
+              <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
+                <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:on?`${r.color}20`:'rgba(255,255,255,.06)',color:on?r.color:C.muted,border:`1px solid ${on?r.color+'50':C.border}`}}>{on?'ACTIVE':'DISABLED'}</span>
+                {toggle&&<div style={{width:28,height:16,borderRadius:8,background:on?C.primary:'rgba(255,255,255,.1)',position:'relative',transition:'background .2s'}}>
+                  <div style={{position:'absolute',top:2,left:on?12:2,width:12,height:12,borderRadius:'50%',background:'white',transition:'left .2s'}}/>
+                </div>}
+              </div>
+            </div>);
+          })}
         </div>
       </div>
       <div>
@@ -749,22 +757,43 @@ class App extends React.Component {
 
   // ── MISSIONS ──────────────────────────────────────────────────────────────
   renderMissions(s) {
+    const confirmed=s.ledger.filter(e=>e.kind==='confirmed').length;
+    const violations=s.ledger.filter(e=>e.kind==='block').length;
+    const selfFixes=s.ledger.filter(e=>e.kind==='correct').length;
+    const step=s.step; const tone=step>=4?C.success:C.primary;
+    const status=step>=4?'Completed':violations>0?'In Progress — Violations Detected':'In Progress';
     const missions=[
-      {title:'Find 3 beauty KOCs for TikTok campaign',meta:'Budget ¥50,000,000 · 2 deals confirmed',status:'In Progress',done:s.step,tone:C.primary},
-      {title:'Refresh Q3 skincare creator pool',      meta:'Budget ¥28,000,000 · 5 deals confirmed',status:'Completed',  done:5,     tone:C.success},
-      {title:'Test YouTube Shorts expansion',          meta:'Blocked by Platform Check rule',         status:'Blocked',    done:1,     tone:C.danger},
+      {
+        title:'Find beauty KOCs for TikTok campaign',
+        meta:`Budget ${this.yen(s.budget)} · ${confirmed} deal${confirmed!==1?'s':''} confirmed · ${violations} violation${violations!==1?'s':''}`,
+        status, done:step, tone, live:true,
+      },
+      {
+        title:'Refresh Q3 skincare creator pool',
+        meta:'Budget ¥28,000,000 · 5 deals confirmed',
+        status:'Completed', done:5, tone:C.success, live:false,
+      },
+      {
+        title:'Test YouTube Shorts expansion',
+        meta:'Blocked by Platform Restriction rule',
+        status:'Blocked', done:1, tone:C.danger, live:false,
+      },
     ];
     return (
     <div>
       <div style={{fontSize:18,fontWeight:700,marginBottom:18}}>Missions</div>
       <div style={{display:'flex',flexDirection:'column',gap:11}}>
         {missions.map(m=>(
-          <div key={m.title} style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:'16px 18px',display:'flex',alignItems:'center',gap:18}}>
+          <div key={m.title} style={{background:C.surface,border:`1px solid ${m.live?m.tone+'44':C.border}`,borderRadius:14,padding:'16px 18px',display:'flex',alignItems:'center',gap:18}}>
             <div style={{flex:1}}>
-              <div style={{fontSize:14,fontWeight:600,marginBottom:3}}>{m.title}</div>
+              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
+                <div style={{fontSize:14,fontWeight:600}}>{m.title}</div>
+                {m.live&&<span style={{fontSize:9,fontWeight:700,letterSpacing:'.08em',padding:'1px 6px',borderRadius:10,background:'rgba(108,92,255,.15)',color:C.primary,border:`1px solid rgba(108,92,255,.3)`}}>LIVE</span>}
+              </div>
               <div style={{fontSize:12,color:C.muted,marginBottom:9}}>{m.meta}</div>
+              {m.live&&selfFixes>0&&<div style={{fontSize:11,color:C.cyan,marginBottom:7}}>↺ {selfFixes} self-correction{selfFixes!==1?'s':''} logged</div>}
               <div style={{display:'flex',gap:4}}>
-                {[0,1,2,3,4].map(i=><div key={i} style={{width:22,height:4,borderRadius:2,background:i<m.done?m.tone:C.elevated}}/>)}
+                {[0,1,2,3,4].map(i=><div key={i} style={{width:22,height:4,borderRadius:2,background:i<m.done?m.tone:C.elevated,transition:'background .4s'}}/>)}
               </div>
             </div>
             <span style={{fontSize:11,fontWeight:700,letterSpacing:'.06em',padding:'4px 12px',borderRadius:20,background:`${m.tone}20`,color:m.tone,border:`1px solid ${m.tone}44`,flexShrink:0}}>{m.status}</span>
