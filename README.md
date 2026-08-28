@@ -5,10 +5,12 @@
 
   [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
   [![WebMCP](https://img.shields.io/badge/WebMCP-enabled-6C5CFF)](https://webmcp.dev)
-  [![No Build](https://img.shields.io/badge/build-none-31D69A)](index.html)
+  [![Live Demo](https://img.shields.io/badge/demo-live-31D69A)](https://campaign-arena-webmcp.vercel.app)
 </div>
 
 ---
+
+**[→ Live Demo](https://campaign-arena-webmcp.vercel.app)**
 
 ![Campaign Arena screenshot](docs/screenshot.png)
 
