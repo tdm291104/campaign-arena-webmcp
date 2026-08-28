@@ -82,6 +82,7 @@ class App extends React.Component {
     highTrustShown: false,
     toast: null,
     simulating: false,
+    rules: { blacklist:true, platform:true, splitDeal:true, threshold:true },
     committed: 11000000,
     kocStatus: { rin:'confirmed', yuna:'rejected' },
     activity: [
@@ -259,12 +260,12 @@ class App extends React.Component {
   toast(text,color){ this.setState({toast:{text,color}}); this.later(()=>this.setState({toast:null}),3200); }
 
   violationOf(koc) {
-    const{blacklist,platforms,threshold,ledger}=this.state;
-    if(blacklist.includes(koc.name)) return{badge:'BLACKLISTED KOC',reason:'blacklisted_koc',label:'Blacklist Check',value:'Denied'};
-    if(!platforms.includes(koc.platform)) return{badge:'PLATFORM NOT ALLOWED',reason:'platform_not_allowed',label:'Allowed Platforms',value:platforms.join(', ')};
+    const{blacklist,platforms,threshold,ledger,rules}=this.state;
+    if(rules.blacklist&&blacklist.includes(koc.name)) return{badge:'BLACKLISTED KOC',reason:'blacklisted_koc',label:'Blacklist Check',value:'Denied'};
+    if(rules.platform&&!platforms.includes(koc.platform)) return{badge:'PLATFORM NOT ALLOWED',reason:'platform_not_allowed',label:'Allowed Platforms',value:platforms.join(', ')};
     const spent=ledger.filter(e=>e.kocKey===koc.key&&e.kind==='confirmed').reduce((s,e)=>s+(e.amount||0),0);
-    if(spent>0&&spent+koc.price>threshold&&koc.price<=threshold) return{badge:'SPLIT-DEAL DETECTED',reason:'split_deal',label:'Cumulative Spend',value:this.yen(spent+koc.price)};
-    if(koc.price>threshold) return{badge:'OVER APPROVAL THRESHOLD',reason:'over_approval_threshold',label:'Approval Threshold',value:this.yen(threshold)};
+    if(rules.splitDeal&&spent>0&&spent+koc.price>threshold&&koc.price<=threshold) return{badge:'SPLIT-DEAL DETECTED',reason:'split_deal',label:'Cumulative Spend',value:this.yen(spent+koc.price)};
+    if(rules.threshold&&koc.price>threshold) return{badge:'OVER APPROVAL THRESHOLD',reason:'over_approval_threshold',label:'Approval Threshold',value:this.yen(threshold)};
     return null;
   }
 
@@ -469,7 +470,24 @@ class App extends React.Component {
               })}
             </div>
           </div>
-          <div style={{marginTop:10,padding:'7px 11px',borderRadius:8,background:'rgba(49,214,154,.07)',border:`1px solid rgba(49,214,154,.2)`,fontSize:12}}>
+          <div style={{marginTop:10,marginBottom:4}}>
+            <div style={{fontSize:11,color:C.muted,marginBottom:6}}>Policy Rules</div>
+            {[
+              {key:'blacklist', label:'Blacklist Check'},
+              {key:'platform',  label:'Platform Restriction'},
+              {key:'splitDeal', label:'Split-Deal Detection'},
+              {key:'threshold', label:'Approval Threshold'},
+            ].map(r=>{
+              const on=s.rules[r.key];
+              return <div key={r.key} onClick={()=>this.setState(st=>({rules:{...st.rules,[r.key]:!st.rules[r.key]}}))} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 0',cursor:'pointer'}}>
+                <span style={{fontSize:11,color:on?C.text:C.muted}}>{r.label}</span>
+                <div style={{width:28,height:16,borderRadius:8,background:on?C.primary:'rgba(255,255,255,.1)',position:'relative',transition:'background .2s',flexShrink:0}}>
+                  <div style={{position:'absolute',top:2,left:on?12:2,width:12,height:12,borderRadius:'50%',background:'white',transition:'left .2s'}}/>
+                </div>
+              </div>;
+            })}
+          </div>
+          <div style={{padding:'7px 11px',borderRadius:8,background:'rgba(49,214,154,.07)',border:`1px solid rgba(49,214,154,.2)`,fontSize:12}}>
             <span style={{color:C.muted}}>Committed: </span>
             <span style={{fontWeight:600,color:C.success,fontFamily:"'JetBrains Mono',monospace"}}>{this.yen(s.committed)}</span>
             <span style={{color:C.muted}}> / {this.yen(s.budget)}</span>
