@@ -475,22 +475,26 @@ class App extends React.Component {
             </div>
           </div>
           <div style={{marginTop:10,marginBottom:4}}>
-            <div style={{fontSize:11,color:C.muted,marginBottom:6}}>Policy Rules</div>
+            <div style={{fontSize:11,color:C.muted,marginBottom:8}}>Policy Rules</div>
+            <div style={{display:'flex',flexDirection:'column',gap:2}}>
             {[
-              {key:'blacklist',    label:'Blacklist Check'},
-              {key:'platform',    label:'Platform Restriction'},
-              {key:'splitDeal',   label:'Split-Deal Detection'},
-              {key:'threshold',   label:'Approval Threshold'},
-              {key:'autoConfirm', label:'Auto-Confirm'},
+              {key:'blacklist',    label:'Blacklist Check',        color:C.danger},
+              {key:'platform',    label:'Platform Restriction',   color:C.cyan},
+              {key:'splitDeal',   label:'Split-Deal Detection',   color:C.warning},
+              {key:'threshold',   label:'Approval Threshold',     color:C.warning},
+              {key:'autoConfirm', label:'Auto-Confirm',           color:C.success},
             ].map(r=>{
               const on=s.rules[r.key];
-              return <div key={r.key} onClick={()=>this.setState(st=>({rules:{...st.rules,[r.key]:!st.rules[r.key]}}))} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'5px 0',cursor:'pointer'}}>
-                <span style={{fontSize:11,color:on?C.text:C.muted}}>{r.label}</span>
-                <div style={{width:28,height:16,borderRadius:8,background:on?C.primary:'rgba(255,255,255,.1)',position:'relative',transition:'background .2s',flexShrink:0}}>
-                  <div style={{position:'absolute',top:2,left:on?12:2,width:12,height:12,borderRadius:'50%',background:'white',transition:'left .2s'}}/>
+              return <div key={r.key} onClick={()=>this.setState(st=>({rules:{...st.rules,[r.key]:!st.rules[r.key]}}))}
+                style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:7,cursor:'pointer',background:on?'rgba(255,255,255,.03)':'transparent',transition:'background .15s'}}>
+                <div style={{width:6,height:6,borderRadius:'50%',background:on?r.color:C.border,boxShadow:on?`0 0 5px ${r.color}`:'none',flexShrink:0,transition:'all .2s'}}/>
+                <span style={{flex:1,fontSize:11,color:on?C.text:C.muted,transition:'color .2s'}}>{r.label}</span>
+                <div style={{width:32,height:18,borderRadius:9,background:on?r.color:'rgba(255,255,255,.08)',position:'relative',transition:'background .25s',flexShrink:0,boxShadow:on?`0 0 8px ${r.color}55`:'none'}}>
+                  <div style={{position:'absolute',top:3,left:on?14:3,width:12,height:12,borderRadius:'50%',background:'white',transition:'left .25s',boxShadow:'0 1px 3px rgba(0,0,0,.3)'}}/>
                 </div>
               </div>;
             })}
+            </div>
           </div>
           <div style={{padding:'7px 11px',borderRadius:8,background:'rgba(49,214,154,.07)',border:`1px solid rgba(49,214,154,.2)`,fontSize:12}}>
             <span style={{color:C.muted}}>Committed: </span>
@@ -679,18 +683,18 @@ class App extends React.Component {
             const on=r.rKey?s.rules[r.rKey]:score>=80;
             const toggle=r.rKey?()=>this.setState(st=>({rules:{...st.rules,[r.rKey]:!st.rules[r.rKey]}})):null;
             return(
-            <div key={r.name} onClick={toggle} style={{padding:'13px 16px',borderRadius:12,background:C.surface,border:`1px solid ${on?C.border:'rgba(255,84,112,.2)'}`,display:'flex',alignItems:'flex-start',gap:12,cursor:toggle?'pointer':'default',opacity:on?1:.7,transition:'opacity .2s'}}>
-              <div style={{width:9,height:9,borderRadius:'50%',background:on?r.color:C.muted,boxShadow:on?`0 0 7px ${r.color}`:'none',marginTop:4,flexShrink:0}}/>
+            <div key={r.name} onClick={toggle} style={{padding:'13px 16px',borderRadius:12,background:C.surface,border:`1px solid ${on?`${r.color}30`:C.border}`,display:'flex',alignItems:'center',gap:12,cursor:toggle?'pointer':'default',transition:'border-color .2s,opacity .2s',opacity:on?1:.55}}>
+              <div style={{width:9,height:9,borderRadius:'50%',background:on?r.color:C.muted,boxShadow:on?`0 0 8px ${r.color}`:'none',flexShrink:0,transition:'all .25s'}}/>
               <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:600,marginBottom:3}}>{r.name}</div>
+                <div style={{fontSize:13,fontWeight:600,marginBottom:2,color:on?C.text:C.muted,transition:'color .2s'}}>{r.name}</div>
                 <div style={{fontSize:12,color:C.muted}}>{r.desc}</div>
               </div>
-              <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
-                <span style={{fontSize:10,fontWeight:700,padding:'2px 8px',borderRadius:20,background:on?`${r.color}20`:'rgba(255,255,255,.06)',color:on?r.color:C.muted,border:`1px solid ${on?r.color+'50':C.border}`}}>{on?'ACTIVE':'DISABLED'}</span>
-                {toggle&&<div style={{width:28,height:16,borderRadius:8,background:on?C.primary:'rgba(255,255,255,.1)',position:'relative',transition:'background .2s'}}>
-                  <div style={{position:'absolute',top:2,left:on?12:2,width:12,height:12,borderRadius:'50%',background:'white',transition:'left .2s'}}/>
-                </div>}
-              </div>
+              {toggle
+                ? <div style={{width:36,height:20,borderRadius:10,background:on?r.color:'rgba(255,255,255,.1)',position:'relative',transition:'background .25s',flexShrink:0,boxShadow:on?`0 0 10px ${r.color}55`:'none'}}>
+                    <div style={{position:'absolute',top:3,left:on?17:3,width:14,height:14,borderRadius:'50%',background:'white',transition:'left .25s',boxShadow:'0 1px 4px rgba(0,0,0,.3)'}}/>
+                  </div>
+                : <span style={{fontSize:10,fontWeight:700,letterSpacing:'.06em',padding:'2px 9px',borderRadius:20,background:`${r.color}18`,color:r.color,border:`1px solid ${r.color}40`,flexShrink:0}}>AUTO</span>
+              }
             </div>);
           })}
         </div>
