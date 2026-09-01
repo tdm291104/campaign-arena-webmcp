@@ -1,0 +1,8 @@
+# AI Agent
+.claude
+.codex
+.agents
+AGENTS.md
+CLAUDE.md
+
+.env
