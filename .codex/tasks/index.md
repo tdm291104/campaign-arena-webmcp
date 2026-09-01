@@ -3,7 +3,7 @@
 
 ## Active
 
-- _(no active tasks — run `$codex-plan <description>` to create one)_
+- [harden-webmcp-submission](2026-09-01-001-harden-webmcp-submission.md) — planning — updated 2026-09-01
 
 ## Recently Done (last 14 days)
 
