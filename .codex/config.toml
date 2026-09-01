@@ -1,3 +1,0 @@
-[agents]
-# Cap concurrent subagent fan-out per session.
-max_concurrent_threads_per_session = 6
