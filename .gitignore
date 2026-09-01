@@ -6,3 +6,6 @@ AGENTS.md
 CLAUDE.md
 
 .env
+node_modules/
+dist/
+.playwright-cli/

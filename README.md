@@ -1,124 +1,147 @@
 <div align="center">
   <img src="assets/aegis-idle.png" alt="AEGIS" width="80" height="80">
   <h3>Campaign Arena</h3>
-  <p>AI-powered KOC campaign manager that blocks and waits for human approval — built on WebMCP.</p>
+  <p>A shared campaign workspace where an AI agent proposes KOC deals and a human keeps final control.</p>
 
   [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-  [![WebMCP](https://img.shields.io/badge/WebMCP-enabled-6C5CFF)](https://webmcp.dev)
+  [![WebMCP](https://img.shields.io/badge/WebMCP-enabled-6C5CFF)](https://learn.chatgpt.com/docs/webmcp)
   [![Live Demo](https://img.shields.io/badge/demo-live-31D69A)](https://campaign-arena-webmcp.vercel.app)
 </div>
 
 ---
 
-**[→ Live Demo](https://campaign-arena-webmcp.vercel.app)**
+**[Open the live demo](https://campaign-arena-webmcp.vercel.app)**
 
 ![Campaign Arena screenshot](docs/screenshot.png)
 
-## What it does
+## Why WebMCP
 
-Campaign Arena lets an AI agent autonomously manage influencer (KOC) marketing campaigns — searching creators, proposing deals, and enforcing policy rules — while keeping a human in the loop for critical decisions.
+Influencer campaign work mixes repetitive agent tasks with decisions a person should still own. Campaign Arena lets the agent search creators, evaluate policy, and propose deals through structured Site tools while the person watches the same live dashboard. A risky proposal pauses the tool call, opens a decision dialog, and resumes only after the person approves or rejects it.
 
-Every deal proposal runs through a **Policy Engine**. When a violation is detected, the agent suspends execution and waits for a human to approve or reject before continuing. No silent overrides.
+This shared-page model is the point of the project: the agent does not guess through visual controls, and the person does not lose context or authority.
 
-## Features
+## Product behavior
 
-- **Human-in-the-loop by design** — `proposeDeliverable` is a real async Promise that resolves only when you click Approve or Reject
-- **4 violation types** — blacklist, platform restriction, split-deal detection, and over-budget threshold
-- **AEGIS Trust Score** — agent earns or loses trust based on behavior; score drives autonomy level (LOW / MEDIUM / HIGH)
-- **Self-correction** — agent detects rejection reason and re-proposes with a corrected strategy
-- **Zero dependencies** — single HTML file, no install, no bundler
+- Clean, deterministic session with visible activity, spend, mission progress, and Session Ledger
+- Five policy checks: blacklist, platform allowlist, campaign budget, split-deal detection, and single-deal approval threshold
+- LOW, MEDIUM, and HIGH autonomy tiers plus a manual auto-confirm switch
+- Transactional tool results: a tool resolves only after the returned outcome is visible in the UI
+- Human-in-the-loop Promise for escalated proposals; concurrent mutations and session closure are bounded while a decision is pending
+- Reason-specific, policy-rechecked correction after rejection; corrections are suggestions and never silently commit spend
+- Responsive dashboard and decision flow for desktop and mobile
 
-## Getting Started
+The Session Ledger is intentionally in-memory for this prototype. Starting a new session or reloading clears it; it is not presented as durable or immutable storage.
 
-### Prerequisites
+## WebMCP Site tools
 
-- A browser that supports WebMCP:
-  - **ChatGPT desktop app** — in-app browser has WebMCP enabled by default
-  - **Chrome 149+** — enable `chrome://flags/#enable-webmcp-testing`
-- Or just a regular browser to explore the UI without an AI agent
+The top-level page registers four imperative tools with `document.modelContext.registerTool`:
 
-### Run locally
+| Tool | Contract |
+|---|---|
+| `searchKOCs(platform?, category?)` | Read-only search; synchronizes the exact result set to the dashboard and KOCs view |
+| `proposeDeliverable(kocKey)` | Proposes one deal; auto-confirms a safe action or waits for a human decision |
+| `getTrustScore()` | Read-only exact score, tier, and factor breakdown |
+| `endSession()` | Writes the final report, completes the mission, and locks later mutations |
+
+Expected TikTok + Beauty search order:
+
+1. Sakura Beauty — 6.7% — ¥8,000,000
+2. Miyu Glow — 4.8% — ¥12,000,000
+3. Luna Forbidden — 7.2% — ¥9,000,000
+4. Sora Viral — 8.1% — ¥4,800,000
+
+## Run locally
+
+Requirements: Node.js 18+ and npm.
 
 ```bash
-# Option 1 — open directly (works for UI, WebMCP needs a server on some browsers)
-open index.html
-
-# Option 2 — serve locally
-npx serve .
-# or
-python3 -m http.server 8080
+npm install
+npm run build
+npx serve dist
 ```
 
-No install step. No build step.
+Open the local URL printed by `serve`. A regular browser supports the full direct UI; WebMCP calls require a supported WebMCP browser.
 
-## Usage
+Useful checks:
 
-### Exploring the UI
-
-Open `index.html` in any browser. The dashboard shows:
-
-- **KOC roster** — 10 influencers across TikTok, Instagram, YouTube
-- **Policy panel** — live budget, platform allowlist, blacklist, approval threshold
-- **Agent activity log** — every tool call the AI agent makes
-- **Campaign ledger** — full deal history with violation events
-
-Click **Propose Deal** on any KOC to trigger the Policy Engine manually.
-
-### Testing with an AI agent
-
-Open the page in a WebMCP-enabled browser, then instruct the agent:
-
-```
-Run a KOC campaign. Search for Beauty influencers on TikTok,
-propose 3 deals, and handle any policy violations.
+```bash
+npm run check
 ```
 
-The agent will call `searchKOCs` → `proposeDeliverable` → block on violations → resume after your decision.
+The checked-in `index.html` is the JSX source. `npm run build` compiles it with esbuild into the ignored `dist/` directory, copies assets, and fails if runtime Babel remains in the production document.
 
-## WebMCP Tools
+## Test directly in the UI
 
-The page registers 4 tools via `document.modelContext.registerTool`:
+1. Open the site and choose **Start Campaign Session**.
+2. Select **KOCs**, then propose **Sora Viral**. Expect `✓ Confirmed`, committed spend `¥4,800,000`, and matching proposal/confirmation entries in the Session Ledger.
+3. Propose **Luna Forbidden**. Expect the blacklist decision dialog. Choose **Reject**; expect Luna to become rejected, committed spend to stay unchanged, and a policy-safe alternative recorded.
+4. Select **End Session**. Expect a final report with the exact one-decimal score, mission Completed, and all proposal controls locked.
+5. Select **New Session**. Expect zero session activity, zero committed spend, and an empty Session Ledger.
 
-| Tool | Description |
-|---|---|
-| `searchKOCs(platform?, category?)` | Search the KOC database with optional filters |
-| `proposeDeliverable(kocKey)` | Propose a deal — blocks execution if a policy violation is detected |
-| `getTrustScore()` | Returns current score, autonomy tier, and factor breakdown |
-| `endSession()` | Close the session and display the final trust report |
+## Test with ChatGPT desktop Site tools
 
-### Violation scenarios
+Use the latest ChatGPT desktop app with **GPT-5.6 Sol** or **GPT-5.6 Terra**. GPT-5.6 Luna currently has Site tools disabled. In **Settings → Browser → Permissions**, keep **Enable site tools** on.
 
-| Scenario | How to trigger |
-|---|---|
-| Blacklist | Propose **Luna Forbidden** |
-| Platform not allowed | Propose **Yuna Trend** (YouTube, not in allowlist) |
-| Split deal | Propose **Kira Fresh** (¥5M already committed → cumulative exceeds threshold) |
-| Over approval threshold | Propose **Miyu Glow** (¥12M single deal > ¥10M limit) |
+1. Open the deployed Campaign Arena URL in ChatGPT's built-in browser and leave that page open. Site tools belong to the current page and can disappear after navigating away or closing it.
+2. In the address bar, open **Site tools → Available site tools** and verify the four tools listed above.
+3. Start a new chat beside the open page and run the read-only prompt below.
 
-## How `waitForDecision` works
-
-```js
-// Agent calls proposeDeliverable → violation detected → execution suspends
-waitForDecision(kocKey) {
-  return new Promise(resolve => this.pending.set(kocKey, resolve));
-}
-
-// Human clicks Approve or Reject → Promise resolves → agent continues
-approve(kocKey) {
-  this.pending.get(kocKey)?.({ approved: true });
-}
+```text
+Use only the Campaign Arena WebMCP Site tools from the currently open page.
+Call getTrustScore, then call searchKOCs with platform "TikTok" and category "Beauty".
+Report the exact tool results and verify the same four KOCs are visible in Campaign Arena.
+Do not call proposeDeliverable or endSession.
 ```
 
-The AI agent's tool call stays open until the human acts. This is the core human-in-the-loop primitive.
+4. Run the safe mutation prompt.
+
+```text
+Use only Campaign Arena WebMCP Site tools.
+Call proposeDeliverable with kocKey "sora".
+After it completes, report the exact result and verify Sora's status, committed budget, activity, and Session Ledger in the visible page.
+```
+
+Expected result: `{ status: "auto_confirmed", amount: 4800000 }`, returned after the UI shows the confirmed deal.
+
+5. Run the human-decision prompt. Do not navigate or reload while the call waits.
+
+```text
+Use only Campaign Arena WebMCP Site tools.
+Call proposeDeliverable with kocKey "luna" and keep the call running while I decide in the Campaign Arena dialog.
+After I choose Reject, report the exact tool result, violation reason, score change, and Session Ledger change.
+Do not replace the Site-tool call with ordinary browser automation.
+```
+
+Expected result after Reject: `{ status: "rejected", violation: "blacklisted_koc" }`. With the documented Sora-then-Luna flow, the score changes from `82.0` to `81.7`, remains `HIGH`, and Luna never increases committed spend.
+
+6. Finish with:
+
+```text
+Use only Campaign Arena WebMCP Site tools. Call getTrustScore, then endSession. Report both exact results and verify the final report and Completed mission in the visible page. Do not attempt another campaign action after closure.
+```
+
+## Policy scenario matrix
+
+| Scenario | Trigger | Expected behavior |
+|---|---|---|
+| Safe auto-confirm | Sora Viral | Confirms at ¥4,800,000 in HIGH autonomy |
+| Blacklist | Luna Forbidden | Waits for human; rejection suggests a non-blacklisted creator |
+| Platform restriction | Yuna Trend | Waits for human; rejection suggests an allowed-platform creator |
+| Split deal | Kira Fresh | Detects the existing ¥5,000,000 prior spend; correction caps the new amount at ¥5,000,000 |
+| Approval threshold | Miyu Glow | Waits for human at ¥12,000,000; correction suggests ¥8,000,000 |
+| Campaign budget | Reduce budget below committed + proposal | Approve is disabled for the hard limit; correction never exceeds remaining budget |
+| Manual approval | Turn Auto-Confirm off | A policy-safe proposal still waits for explicit approval |
+
+Invalid KOC keys, duplicate proposals, concurrent proposal attempts, ending during a pending decision, and mutations after session closure return bounded error objects instead of hanging or duplicating spend.
 
 ## Stack
 
 | | |
 |---|---|
-| UI | React 18 + Babel standalone (no bundler) |
-| Protocol | WebMCP — `document.modelContext.registerTool` |
-| Assets | 4 AEGIS mascot states (idle / violation / correcting / high-trust) |
-| Hosting | Single `index.html` — deploy anywhere |
+| UI | React 18, static JSX source compiled with esbuild |
+| Protocol | Imperative WebMCP Site tools in the top-level page |
+| Assets | Four local AEGIS states |
+| Hosting | Static Vercel output from `dist/` |
 
 ## License
 

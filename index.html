@@ -1,6 +1,7 @@
 <title>Campaign Arena</title>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -19,6 +20,34 @@ input[type=range]{cursor:pointer}
 @keyframes slideUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 @keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
 @keyframes celebrate{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:scale(1)}}
+.app-header{display:flex;align-items:center;min-height:52px;padding:0 24px}
+.main-shell{padding:22px 24px;max-width:1300px;margin:0 auto;min-width:0}
+.dashboard-grid{display:grid;grid-template-columns:276px minmax(0,1fr) 256px;gap:18px}
+.dashboard-grid>*,.policy-grid>*,.koc-grid>*{min-width:0}
+.policy-grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px}
+.koc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.modal-overlay{padding:20px}
+.modal-card{width:min(400px,100%)}
+@media(max-width:1100px){
+  .dashboard-grid{grid-template-columns:1fr}
+  .dashboard-grid>div:last-child{display:grid!important;grid-template-columns:minmax(0,1fr) minmax(240px,320px);align-items:start}
+}
+@media(max-width:900px){
+  .policy-grid{grid-template-columns:1fr}
+  .koc-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:700px){
+  .app-header{flex-wrap:wrap;padding:8px 14px;gap:8px}
+  .app-header nav{order:3;width:100%;flex-basis:100%;overflow-x:auto}
+  .app-header nav button{flex:0 0 auto;padding-inline:11px!important}
+  .main-shell{padding:14px}
+  .dashboard-grid>div:last-child{display:flex!important}
+  .koc-grid{grid-template-columns:1fr}
+  .mission-card{align-items:flex-start!important;flex-direction:column}
+  .activity-row{display:grid!important;grid-template-columns:6px 46px minmax(0,1fr)}
+  .activity-row>span:last-child{grid-column:2/4;justify-self:start}
+  .summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
 </style>
 <div id="root"></div>
@@ -55,54 +84,48 @@ function arcD(a1, a2, r, cx, cy) {
   return `M${s.x} ${s.y} A${r} ${r} 0 ${large} 1 ${e.x} ${e.y}`;
 }
 
+function createSessionState({meetOpen=true}={}) {
+  return {
+    view:'dashboard',
+    factors:{violation:.30,override:.30,deviation:.05,correction:.40},
+    display:0,
+    agentState:'idle',
+    sessionStatus:'active',
+    step:0,
+    meetOpen,
+    editing:false,
+    budget:50000000,
+    threshold:10000000,
+    platforms:['TikTok','Instagram'],
+    blacklist:['Luna Forbidden'],
+    modal:null,
+    selfCorrect:null,
+    celebrate:false,
+    toast:null,
+    simulating:false,
+    currentMission:'Find Beauty KOCs for TikTok campaign',
+    rules:{blacklist:true,platform:true,budget:true,splitDeal:true,threshold:true,autoConfirm:true},
+    committed:0,
+    kocStatus:{},
+    activity:[],
+    ledger:[],
+    lastSearchKeys:null,
+    lastSearchLabel:null,
+    finalScore:null,
+  };
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 class App extends React.Component {
   pending = new Map();
   timers  = [];
   clock   = 10*3600+41*60+6;
-
-  state = {
-    view: 'dashboard',
-    factors: { violation:.30, override:.30, deviation:.05, correction:.40 },
-    display: 0,
-    agentState: 'idle',
-    step: 4,
-    meetOpen: true,
-    editing: false,
-    budget: 50000000,
-    threshold: 10000000,
-    platforms: ['TikTok','Instagram'],
-    blacklist: ['Luna Forbidden'],
-    modal: null,
-    selfCorrect: null,
-    celebrate: false,
-    highTrustShown: false,
-    toast: null,
-    simulating: false,
-    currentMission: 'Find beauty KOCs for TikTok campaign',
-    rules: { blacklist:true, platform:true, splitDeal:true, threshold:true, autoConfirm:true },
-    committed: 11000000,
-    kocStatus: { rin:'confirmed', yuna:'rejected', kira:'confirmed' },
-    activity: [
-      { id:1, time:'10:37:44', tool:'searchKOCs',         detail:'(platform: TikTok, category: Beauty)', status:'done' },
-      { id:2, time:'10:38:09', tool:'handleRejection',    detail:'(platform_not_allowed: Yuna)',          status:'done' },
-      { id:3, time:'10:38:34', tool:'confirmDeal',        detail:'(¥5,000,000 · Kira Fresh)',             status:'done' },
-      { id:4, time:'10:39:47', tool:'confirmDeal',        detail:'(¥6,000,000 · Rin Daily)',              status:'done' },
-      { id:5, time:'10:41:00', tool:'checkPolicyDrift',   detail:'(5 rules scanned)',                     status:'done' },
-      ],
-    ledger: [
-      { id:1, time:'10:37:44',kind:'proposed', title:'Agent Proposed',        detail:'Yuna Trend · YouTube Video',               sub:'Deliverable: 1 Video', amount:15000000 },
-      { id:2, time:'10:37:44',kind:'block',    title:'Policy Engine',         badge:'PLATFORM NOT ALLOWED',                      detail:'Allowed platforms: TikTok, Instagram' },
-      { id:3, time:'10:37:51',kind:'reject',   title:'Rejected',              detail:'Reason: platform_not_allowed',             sub:'Agent will propose an alternative.' },
-      { id:4, time:'10:37:55',kind:'correct',  title:'Agent Self-Correction', detail:'Switching to TikTok creators within policy',sub:'Re-running search with platform filter.' },
-      { id:5, time:'10:38:31',kind:'proposed', title:'Agent Proposed',        detail:'Kira Fresh · TikTok Video',                sub:'Deliverable: 1 Video', amount:5000000 },
-      { id:6, time:'10:38:34',kind:'confirmed',title:'Auto-Confirmed',        detail:'Within policy — no approval needed.',      amount:5000000, kocKey:'kira' },
-      { id:7, time:'10:39:44',kind:'proposed', title:'Agent Proposed',        detail:'Rin Daily · TikTok Video',                 sub:'Deliverable: 1 Video', amount:6000000 },
-      { id:8, time:'10:39:47',kind:'confirmed',title:'Auto-Confirmed',        detail:'Within policy — no approval needed.',      amount:6000000, kocKey:'rin'  },
-      ],
-  };
+  activeOperation = null;
+  decisionRef = React.createRef();
+  state = createSessionState();
 
   weights = { violation:-40, override:-30, deviation:-20, correction:10 };
+  priorSpend = { kira:5000000 };
 
   kocs = [
     { key:'sakura',name:'Sakura Beauty',  initials:'SB',platform:'TikTok',    category:'Beauty',    engagement:'6.7%',followers:'125K',price:8000000  },
@@ -121,20 +144,14 @@ class App extends React.Component {
 
   componentDidMount() {
     this.tween(this.score());
-    this.beat = setInterval(()=>{
-      if(this.state.modal) return;
-      const pool=[
-        { tool:'monitorCampaign',  detail:'(budget guard)' },
-        { tool:'syncEngagement',   detail:'(refresh KOC stats)' },
-        { tool:'checkPolicyDrift', detail:'(5 rules)' },
-      ];
-      this.pushActivity(pool[Math.floor(Math.random()*pool.length)],'done');
-    }, 11000);
     this.registerWebMCP();
   }
 
+  componentDidUpdate(_,prev) {
+    if(this.state.modal&&!prev.modal) this.decisionRef.current?.focus();
+  }
+
   componentWillUnmount() {
-    clearInterval(this.beat);
     cancelAnimationFrame(this.raf);
     this.timers.forEach(clearTimeout);
   }
@@ -145,97 +162,86 @@ class App extends React.Component {
     document.modelContext.registerTool({
       name:'searchKOCs',
       description:'Search KOC influencers by platform and category',
-      inputSchema:{ type:'object', properties:{ platform:{type:'string',description:'Filter by platform (TikTok, Instagram, YouTube)'}, category:{type:'string',description:'Filter by category (Beauty, Lifestyle, Skincare)'} } },
-      execute:async(input)=>{
-        const{platform,category}=input||{};
-        const parts=[];
-        if(category) parts.push(category);
-        parts.push('KOCs');
-        if(platform) parts.push(`for ${platform} campaign`);
-        self.setState({currentMission:`Find ${parts.join(' ')}`, step:0});
-        self.pushActivity({tool:'searchKOCs',detail:`(${[platform,category].filter(Boolean).join(', ')||'all'})`},'running');
-        const results=self.kocs
-          .filter(k=>(!platform||k.platform===platform)&&(!category||k.category===category))
-          .map(k=>({key:k.key,name:k.name,platform:k.platform,engagement:k.engagement,price:k.price}));
-        self.setState(s=>({activity:s.activity.map((a,i)=>i===s.activity.length-1?{...a,status:'done'}:a), step:1}));
-        return results;
-      },
+      inputSchema:{ type:'object', properties:{ platform:{type:'string',enum:['TikTok','Instagram','YouTube'],description:'Filter by platform'}, category:{type:'string',enum:['Beauty','Lifestyle','Skincare'],description:'Filter by category'} }, additionalProperties:false },
+      annotations:{readOnlyHint:true},
+      execute:async(input)=>self.searchKOCs(input),
     });
     document.modelContext.registerTool({
       name:'proposeDeliverable',
       description:'Propose a KOC deal — triggers Policy Engine, may require human approval. Blocks until human decides if a policy violation is detected.',
-      inputSchema:{ type:'object', properties:{ kocKey:{type:'string',description:'KOC identifier from searchKOCs'} }, required:['kocKey'] },
+      inputSchema:{ type:'object', properties:{ kocKey:{type:'string',minLength:1,description:'KOC identifier from searchKOCs'} }, required:['kocKey'], additionalProperties:false },
       execute:async(input)=>{
-        const{kocKey}=input;
-        const koc=self.kocs.find(k=>k.key===kocKey);
-        if(!koc) return { error:'KOC not found' };
-        const v=self.violationOf(koc);
-        self.propose(koc);
-        if(v){ const dec=await self.waitForDecision(kocKey); return { status:dec.approved?'approved':'rejected', violation:v.reason }; }
-        if(!self.state.rules.autoConfirm){ const dec=await self.waitForDecision(kocKey); return { status:dec.approved?'approved':'rejected', note:'manual_approval_required' }; }
-        return { status:'auto_confirmed', amount:koc.price };
+        const koc=self.kocs.find(k=>k.key===input?.kocKey);
+        return koc?self.propose(koc):{error:'koc_not_found'};
       },
     });
     document.modelContext.registerTool({
       name:'getTrustScore',
       description:'Get the current AEGIS trust score and autonomy tier (LOW/MEDIUM/HIGH)',
-      inputSchema:{ type:'object', properties:{} },
-      execute:async()=>{ const s=self.score(); return { score:s, tier:s>=80?'HIGH':s>=50?'MEDIUM':'LOW', factors:self.state.factors }; },
+      inputSchema:{ type:'object', properties:{}, additionalProperties:false },
+      annotations:{readOnlyHint:true},
+      execute:async()=>{ const s=self.score(); return { score:s, tier:self.tierCode(s), factors:self.state.factors }; },
     });
     document.modelContext.registerTool({
       name:'endSession',
       description:'Close the campaign session and display the final trust report',
-      inputSchema:{ type:'object', properties:{} },
-      execute:async()=>{ self.endSession(); return { score:self.score() }; },
+      inputSchema:{ type:'object', properties:{}, additionalProperties:false },
+      execute:async()=>self.endSession(),
     });
   }
 
   waitForDecision(kocKey) { return new Promise(r=>this.pending.set(kocKey,r)); }
 
-  waitForModalClose() {
-    return new Promise(r=>{
-      setTimeout(()=>{
-        const poll=()=>this.state.modal?setTimeout(poll,250):r();
-        poll();
-      },1600);
-    });
-  }
+  searchKOCs = async(input={})=>{
+    if(this.state.sessionStatus==='ended') return {error:'session_ended'};
+    if(this.activeOperation) return {error:'operation_in_progress'};
+    const{platform,category}=input||{};
+    if(platform&&!['TikTok','Instagram','YouTube'].includes(platform)) return {error:'invalid_platform'};
+    if(category&&!['Beauty','Lifestyle','Skincare'].includes(category)) return {error:'invalid_category'};
+    this.activeOperation='search';
+    try{
+      const parts=[];
+      if(category) parts.push(category);
+      parts.push('KOCs');
+      if(platform) parts.push(`for ${platform} campaign`);
+      const label=[platform,category].filter(Boolean).join(', ')||'all';
+      await this.setStateAsync({currentMission:`Find ${parts.join(' ')}`,step:0,meetOpen:false});
+      const activity=await this.pushActivity({tool:'searchKOCs',detail:`(${label})`},'running');
+      const matches=this.kocs.filter(k=>(!platform||k.platform===platform)&&(!category||k.category===category));
+      await this.setStateAsync(s=>({
+        activity:s.activity.map(a=>a.id===activity.id?{...a,status:'done'}:a),
+        lastSearchKeys:matches.map(k=>k.key),
+        lastSearchLabel:label,
+        step:2,
+      }));
+      return matches.map(k=>({key:k.key,name:k.name,platform:k.platform,engagement:k.engagement,price:k.price}));
+    }finally{ this.activeOperation=null; }
+  };
 
   simulateAgent = async () => {
-    if(this.state.simulating||this.state.modal) return;
-    this.setState({simulating:true});
-    const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-    const skip=key=>!!this.state.kocStatus[key];
-
-    this.setState({currentMission:'Find Beauty KOCs for TikTok campaign', step:0});
-    this.pushActivity({tool:'searchKOCs',detail:'(platform: TikTok, category: Beauty)'},'running');
-    await sleep(1600);
-    this.setState(s=>({activity:s.activity.map((a,i)=>i===s.activity.length-1?{...a,status:'done'}:a), step:1}));
-    await sleep(900);
-
-    if(!skip('luna')){
-      this.propose(this.kocs.find(k=>k.key==='luna'));
-      await this.waitForModalClose();
-      await sleep(800);
-    }
-
-    if(!skip('miyu')){
-      this.propose(this.kocs.find(k=>k.key==='miyu'));
-      await this.waitForModalClose();
-      await sleep(800);
-    }
-
-    if(!skip('sakura')){
-      const sakuraKoc=this.kocs.find(k=>k.key==='sakura');
-      this.propose(sakuraKoc);
-      const needsWait=!!this.violationOf(sakuraKoc)||!this.state.rules.autoConfirm;
-      if(needsWait){ await this.waitForModalClose(); } else { await sleep(1800); }
-    }
-
-    this.setState({simulating:false});
+    if(this.state.simulating||this.activeOperation||this.state.sessionStatus==='ended') return;
+    await this.setStateAsync({simulating:true});
+    try{
+      await this.searchKOCs({platform:'TikTok',category:'Beauty'});
+      for(const key of ['luna','miyu','sakura']){
+        if(!this.state.kocStatus[key]) await this.propose(this.kocs.find(k=>k.key===key));
+      }
+    }finally{ await this.setStateAsync({simulating:false}); }
   };
 
   later(fn,ms) { this.timers.push(setTimeout(fn,ms)); }
+
+  setStateAsync(update) { return new Promise(resolve=>this.setState(update,resolve)); }
+
+  resetSession=async()=>{
+    if(this.activeOperation) return;
+    this.timers.forEach(clearTimeout);
+    this.timers=[];
+    this.pending.clear();
+    this.clock=10*3600+41*60+6;
+    await this.setStateAsync(createSessionState({meetOpen:true}));
+    this.tween(this.score());
+  };
 
   score() {
     const{factors:f}=this.state, w=this.weights;
@@ -255,119 +261,177 @@ class App extends React.Component {
 
   bump(delta) {
     const f={...this.state.factors};
-    Object.keys(delta).forEach(k=>{f[k]=Math.max(0,Math.round((f[k]+delta[k])*100)/100)});
-    this.setState({factors:f},()=>this.tween(this.score()));
+    Object.keys(delta).forEach(k=>{f[k]=Math.min(1,Math.max(0,Math.round((f[k]+delta[k])*100)/100))});
+    return new Promise(resolve=>this.setState({factors:f},()=>{this.tween(this.score());resolve()}));
   }
 
   yen(n){ return '¥'+n.toLocaleString('en-US'); }
 
   tick(add){ this.clock+=(add||2+Math.floor(Math.random()*6)); const h=Math.floor(this.clock/3600),m=Math.floor((this.clock%3600)/60),s=this.clock%60; return [h,m,s].map(v=>String(v).padStart(2,'0')).join(':'); }
 
-  pushActivity(item,status){ const time=this.tick(); this.setState(s=>({activity:[...s.activity,{id:Date.now()+Math.random(),time,tool:item.tool,detail:item.detail,status}].slice(-5)})); }
+  pushActivity(item,status){
+    const entry={id:Date.now()+Math.random(),time:this.tick(),...item,status};
+    return this.setStateAsync(s=>({activity:[...s.activity,entry].slice(-5)})).then(()=>entry);
+  }
 
-  pushLedger(entry){ const time=entry.time||this.tick(); this.setState(s=>({ledger:[...s.ledger,{id:Date.now()+Math.random(),time,...entry}]})); }
+  pushLedger(entry){
+    const next={id:Date.now()+Math.random(),time:entry.time||this.tick(),...entry};
+    return this.setStateAsync(s=>({ledger:[...s.ledger,next]})).then(()=>next);
+  }
 
   toast(text,color){ this.setState({toast:{text,color}}); this.later(()=>this.setState({toast:null}),3200); }
 
-  violationOf(koc) {
-    const{blacklist,platforms,threshold,ledger,rules}=this.state;
+  confirmedSpendFor(kocKey) {
+    return (this.priorSpend[kocKey]||0)+this.state.ledger
+      .filter(e=>e.kocKey===kocKey&&e.kind==='confirmed')
+      .reduce((sum,e)=>sum+(e.amount||0),0);
+  }
+
+  violationOf(koc,amount=koc.price) {
+    const{blacklist,platforms,threshold,budget,committed,rules}=this.state;
     if(rules.blacklist&&blacklist.includes(koc.name)) return{badge:'BLACKLISTED KOC',reason:'blacklisted_koc',label:'Blacklist Check',value:'Denied'};
     if(rules.platform&&!platforms.includes(koc.platform)) return{badge:'PLATFORM NOT ALLOWED',reason:'platform_not_allowed',label:'Allowed Platforms',value:platforms.join(', ')};
-    const spent=ledger.filter(e=>e.kocKey===koc.key&&e.kind==='confirmed').reduce((s,e)=>s+(e.amount||0),0);
-    if(rules.splitDeal&&spent>0&&spent+koc.price>threshold&&koc.price<=threshold) return{badge:'SPLIT-DEAL DETECTED',reason:'split_deal',label:'Cumulative Spend',value:this.yen(spent+koc.price)};
-    if(rules.threshold&&koc.price>threshold) return{badge:'OVER APPROVAL THRESHOLD',reason:'over_approval_threshold',label:'Approval Threshold',value:this.yen(threshold)};
+    if(rules.budget&&committed+amount>budget) return{badge:'CAMPAIGN BUDGET EXCEEDED',reason:'campaign_budget_exceeded',label:'Remaining Budget',value:this.yen(Math.max(0,budget-committed)),hard:true};
+    const spent=this.confirmedSpendFor(koc.key);
+    if(rules.splitDeal&&spent>0&&spent+amount>threshold&&amount<=threshold) return{badge:'SPLIT-DEAL DETECTED',reason:'split_deal',label:'Cumulative Spend',value:this.yen(spent+amount)};
+    if(rules.threshold&&amount>threshold) return{badge:'OVER APPROVAL THRESHOLD',reason:'over_approval_threshold',label:'Approval Threshold',value:this.yen(threshold)};
     return null;
   }
 
-  propose(koc) {
-    if(this.state.modal) return;
-    const v=this.violationOf(koc);
-    const needsHuman=!!v||!this.state.rules.autoConfirm;
-    this.setState({step:needsHuman?3:4, kocStatus:{...this.state.kocStatus,[koc.key]:'pending'}});
-    this.pushActivity({tool:'proposeDeliverable',detail:`(KOC: ${koc.name})`},needsHuman?'human':'done');
-    this.pushLedger({kind:'proposed',title:'Agent Proposed',detail:`${koc.name} · ${koc.platform} Video`,sub:'Deliverable: 1 Video',amount:koc.price,kocKey:koc.key});
-    if(v){
-      this.later(()=>{ this.pushLedger({kind:'block',title:'Policy Engine',badge:v.badge,detail:`${v.label}: ${v.value}`}); this.setState({agentState:'violation'}); },420);
-      this.later(()=>{ this.pushLedger({kind:'human',title:'Human Approval Required',detail:'This action requires your decision.',pending:true,koc:koc.key}); this.pushActivity({tool:'awaitHumanDecision',detail:`(${v.reason})`},'pending'); },900);
-      this.later(()=>this.setState({modal:{koc:koc.key,v}}),1250);
-    } else if(!this.state.rules.autoConfirm){
-      this.later(()=>{ this.pushLedger({kind:'human',title:'Manual Approval Required',detail:'Auto-Confirm is disabled — awaiting your decision.',pending:true,koc:koc.key}); this.pushActivity({tool:'awaitHumanDecision',detail:'(auto-confirm off)'},'pending'); },500);
-      this.later(()=>this.setState({modal:{koc:koc.key,v:null}}),800);
-    } else {
-      this.later(()=>{
-        this.pushLedger({kind:'confirmed',title:'Auto-Confirmed',detail:'Within policy — no approval needed.',amount:koc.price,kocKey:koc.key});
-        this.pushActivity({tool:'confirmDeal',detail:`(${this.yen(koc.price)})`},'done');
-        this.setState(s=>({committed:s.committed+koc.price,step:4,kocStatus:{...s.kocStatus,[koc.key]:'confirmed'}}));
-        this.bump({deviation:-.01,correction:.02});
-        this.toast('Deal auto-confirmed — within policy threshold',C.success);
-      },700);
-    }
+  tierCode(score=this.score()) { return score>=80?'HIGH':score>=50?'MEDIUM':'LOW'; }
+
+  autonomyReason(amount) {
+    if(!this.state.rules.autoConfirm) return'manual_approval_required';
+    const tier=this.tierCode();
+    if(tier==='LOW') return'low_autonomy';
+    if(tier==='MEDIUM'&&amount>this.state.threshold*.5) return'medium_autonomy_threshold';
+    return null;
   }
 
-  openFromLedger(kocKey){ const koc=this.kocs.find(k=>k.key===kocKey); if(!koc) return; const v=this.violationOf(koc); this.setState({modal:{koc:kocKey,v},agentState:v?'violation':'idle'}); }
-
-  approve=()=>{
-    const m=this.state.modal; if(!m) return;
-    const koc=this.kocs.find(k=>k.key===m.koc);
-    const res=this.pending.get(m.koc); if(res){res({approved:true});this.pending.delete(m.koc)}
-    this.setState(s=>({ modal:null,agentState:'idle',step:4, committed:s.committed+koc.price, kocStatus:{...s.kocStatus,[koc.key]:'confirmed'}, ledger:s.ledger.map(e=>e.pending?{...e,pending:false,detail:`Approved by you at ${e.time}`}:e) }));
-    this.pushLedger({kind:'confirmed',title:'Confirmed',detail:`Human approved · ${koc.name}`,amount:koc.price,kocKey:koc.key});
-    this.pushActivity({tool:'confirmDeal',detail:`(${this.yen(koc.price)}, human approved)`},'done');
-    this.bump({violation:.03,deviation:.01});
-    this.toast('Approved — logged to ledger. Trust score adjusted.',C.warning);
-  };
-
-  reject=()=>{
-    const m=this.state.modal; if(!m) return;
-    const koc=this.kocs.find(k=>k.key===m.koc);
-    const reason=m.v?m.v.reason:'manual_approval_required';
-    const res=this.pending.get(m.koc); if(res){res({approved:false});this.pending.delete(m.koc)}
-    this.setState(s=>({ modal:null,agentState:'correcting', kocStatus:{...s.kocStatus,[koc.key]:'rejected'}, ledger:s.ledger.map(e=>e.pending?{...e,pending:false,detail:`Rejected by you at ${e.time}`}:e) }));
-    this.pushLedger({kind:'reject',title:'Rejected',detail:`Reason: ${reason}`,sub:'Agent will propose an alternative.'});
-    this.pushActivity({tool:'handleRejection',detail:`(${reason})`},'done');
-    this.bump({override:.05});
-    const isBlacklist=reason==='blacklisted_koc';
-    const newPrice=Math.round(this.state.threshold*.8);
-    this.later(()=>{
-      if(isBlacklist){
-        this.pushLedger({kind:'correct',title:'Agent Self-Correction',detail:'KOC is blacklisted — searching for an alternative creator.',sub:'Blacklist cannot be bypassed by price.'});
-        this.pushActivity({tool:'searchKOCs',detail:'(finding alternative)'},'done');
-        this.bump({correction:.05,override:-.01});
-        this.setState({agentState:'idle'});
-      } else {
-        this.pushLedger({kind:'correct',title:'Agent Self-Correction',detail:`Previous: ${this.yen(koc.price)} → New: ${this.yen(newPrice)}`,sub:'Within approval threshold.'});
-        this.pushActivity({tool:'renegotiateDeal',detail:`(${this.yen(newPrice)})`},'done');
-        this.bump({correction:.10,override:-.02});
-        this.setState({selfCorrect:{from:this.yen(koc.price),to:this.yen(newPrice)}});
-        this.later(()=>this.setState(s=>s.selfCorrect?{selfCorrect:null,agentState:'idle'}:{}),6000);
+  propose=async(koc)=>{
+    if(this.state.sessionStatus==='ended') return{error:'session_ended'};
+    if(this.activeOperation) return{error:'operation_in_progress'};
+    if(this.state.kocStatus[koc.key]) return{error:'koc_already_proposed',status:this.state.kocStatus[koc.key]};
+    this.activeOperation=`propose:${koc.key}`;
+    const amount=koc.price;
+    try{
+      const violation=this.violationOf(koc,amount);
+      const approvalReason=violation?.reason||this.autonomyReason(amount);
+      const needsHuman=!!approvalReason;
+      await this.setStateAsync(s=>({step:needsHuman?3:4,meetOpen:false,kocStatus:{...s.kocStatus,[koc.key]:'pending'}}));
+      const proposalActivity=await this.pushActivity({tool:'proposeDeliverable',detail:`(KOC: ${koc.name})`,kocKey:koc.key},needsHuman?'human':'running');
+      await this.pushLedger({kind:'proposed',title:'Agent Proposed',detail:`${koc.name} · ${koc.platform} Video`,sub:'Deliverable: 1 Video',amount,kocKey:koc.key});
+      if(!needsHuman){
+        await this.confirmProposal(koc,amount,false,proposalActivity.id);
+        return{status:'auto_confirmed',amount};
       }
-    },1500);
-    if(!isBlacklist) this.later(()=>{
-      this.pushLedger({kind:'confirmed',title:'Confirmed',detail:`Renegotiated · ${koc.name}`,amount:newPrice,kocKey:koc.key});
-      this.setState(s=>({step:4,committed:s.committed+newPrice,kocStatus:{...s.kocStatus,[koc.key]:'confirmed'}}));
-    },2600);
+      if(violation) await this.pushLedger({kind:'block',title:'Policy Engine',badge:violation.badge,detail:`${violation.label}: ${violation.value}`,kocKey:koc.key});
+      const decision=this.waitForDecision(koc.key);
+      await this.pushLedger({kind:'human',title:'Human Approval Required',detail:violation?.hard?'Hard limit — rejection required.':'This action requires your decision.',pending:true,koc:koc.key,kocKey:koc.key});
+      await this.pushActivity({tool:'awaitHumanDecision',detail:`(${approvalReason})`,kocKey:koc.key},'pending');
+      await this.setStateAsync({modal:{koc:koc.key,v:violation,amount,approvalReason,activityId:proposalActivity.id},agentState:violation?'violation':'idle'});
+      const result=await decision;
+      return violation?{status:result.approved?'approved':'rejected',violation:violation.reason}:{status:result.approved?'approved':'rejected',note:approvalReason};
+    }finally{ this.activeOperation=null; }
   };
 
-  endSession=()=>{
-    const s=Math.round(this.score());
-    if(s>=80&&!this.state.highTrustShown) this.setState({celebrate:true,highTrustShown:true,agentState:'highTrust'});
-    else this.toast(`Session closed. Trust Score ${s}/100`,s>=80?C.success:C.warning);
+  confirmProposal=async(koc,amount,human,activityId)=>{
+    await this.setStateAsync(s=>({
+      modal:null,
+      agentState:'idle',
+      step:5,
+      committed:s.committed+amount,
+      kocStatus:{...s.kocStatus,[koc.key]:'confirmed'},
+      ledger:s.ledger.map(e=>e.pending&&e.koc===koc.key?{...e,pending:false,detail:human?`Approved by you at ${e.time}`:e.detail}:e),
+      activity:s.activity.map(a=>(a.id===activityId||(a.kocKey===koc.key&&a.status==='pending'))?{...a,status:'done'}:a),
+    }));
+    await this.pushLedger({kind:'confirmed',title:human?'Confirmed':'Auto-Confirmed',detail:human?`Human approved · ${koc.name}`:'Within policy — no approval needed.',amount,kocKey:koc.key});
+    await this.pushActivity({tool:'confirmDeal',detail:`(${this.yen(amount)}${human?', human approved':''})`},'done');
+    await this.bump(human?{violation:.03,override:.02}:{deviation:-.01,correction:.02});
+    this.toast(human?'Approved — logged to Session Ledger.':'Deal auto-confirmed — within policy.',human?C.warning:C.success);
   };
 
-  tier(){ const s=this.score(); return s>=80?{label:'HIGH AUTONOMY',color:C.success,desc:'Agent can auto-confirm deals within policy threshold.'}:s>=50?{label:'MEDIUM AUTONOMY',color:C.warning,desc:'Agent requests approval for deals over 50% of threshold.'}:{label:'LOW AUTONOMY',color:C.danger,desc:'All agent actions require your approval before execution.'}; }
+  correctionFor(koc,violation) {
+    if(!violation) return null;
+    const safeAlternative=()=>this.kocs.find(candidate=>candidate.key!==koc.key&&candidate.category===koc.category&&!this.state.kocStatus[candidate.key]&&!this.violationOf(candidate,candidate.price));
+    if(['blacklisted_koc','platform_not_allowed'].includes(violation.reason)){
+      const alternative=safeAlternative();
+      return alternative?{detail:`Switch to ${alternative.name} · ${alternative.platform}`,sub:'Policy re-check passed; no deal was auto-confirmed.',kocKey:alternative.key}:null;
+    }
+    const remaining=Math.max(0,this.state.budget-this.state.committed);
+    let amount=0;
+    if(violation.reason==='split_deal') amount=Math.min(koc.price,Math.max(0,this.state.threshold-this.confirmedSpendFor(koc.key)),remaining);
+    if(violation.reason==='over_approval_threshold') amount=Math.min(Math.round(this.state.threshold*.8),remaining);
+    if(violation.reason==='campaign_budget_exceeded') amount=Math.min(koc.price,remaining,this.state.threshold);
+    if(amount>0&&!this.violationOf(koc,amount)) return{detail:`Revise ${koc.name} to ${this.yen(amount)}`,sub:'Policy re-check passed; awaiting a new proposal.',kocKey:koc.key,amount};
+    const alternative=safeAlternative();
+    return alternative?{detail:`Switch to ${alternative.name} · ${alternative.platform}`,sub:'Policy re-check passed; no deal was auto-confirmed.',kocKey:alternative.key}:null;
+  }
+
+  approve=async()=>{
+    const m=this.state.modal; if(!m) return;
+    if(m.v?.hard){this.toast('Campaign budget is a hard limit. Reject this proposal.',C.danger);return;}
+    const koc=this.kocs.find(k=>k.key===m.koc);
+    await this.confirmProposal(koc,m.amount,true,m.activityId);
+    const resolve=this.pending.get(m.koc);
+    this.pending.delete(m.koc);
+    resolve?.({approved:true});
+  };
+
+  reject=async()=>{
+    const m=this.state.modal; if(!m) return;
+    const koc=this.kocs.find(k=>k.key===m.koc);
+    const reason=m.approvalReason||m.v?.reason||'manual_approval_required';
+    await this.setStateAsync(s=>({
+      modal:null,
+      agentState:'correcting',
+      kocStatus:{...s.kocStatus,[koc.key]:'rejected'},
+      ledger:s.ledger.map(e=>e.pending&&e.koc===koc.key?{...e,pending:false,detail:`Rejected by you at ${e.time}`}:e),
+      activity:s.activity.map(a=>(a.id===m.activityId||(a.kocKey===koc.key&&['human','pending'].includes(a.status)))?{...a,status:'done'}:a),
+    }));
+    await this.pushLedger({kind:'reject',title:'Rejected',detail:`Reason: ${reason}`,sub:'Committed spend was not changed.',kocKey:koc.key});
+    await this.pushActivity({tool:'handleRejection',detail:`(${reason})`},'done');
+    await this.bump({override:.05});
+    const correction=this.correctionFor(koc,m.v);
+    if(correction){
+      await this.pushLedger({kind:'correct',title:'Agent Self-Correction',...correction});
+      await this.pushActivity({tool:'selfCorrect',detail:`(${correction.detail})`},'done');
+      await this.bump({correction:.05,override:-.01});
+      await this.setStateAsync({selfCorrect:{from:koc.name,to:correction.detail},agentState:'idle'});
+      this.later(()=>this.setState({selfCorrect:null}),5000);
+    }else await this.setStateAsync({agentState:'idle'});
+    const resolve=this.pending.get(m.koc);
+    this.pending.delete(m.koc);
+    resolve?.({approved:false});
+  };
+
+  endSession=async()=>{
+    if(this.state.sessionStatus==='ended') return{score:this.state.finalScore};
+    if(this.activeOperation||this.pending.size) return{error:'human_decision_pending'};
+    this.activeOperation='end';
+    try{
+      const score=this.score();
+      await this.pushActivity({tool:'endSession',detail:'(final trust report)'},'done');
+      await this.pushLedger({kind:'session',title:'Session Closed',detail:`Final trust: ${score.toFixed(1)}/100 · ${this.tierCode(score)}`});
+      await this.setStateAsync({sessionStatus:'ended',step:5,finalScore:score,celebrate:true,agentState:score>=80?'highTrust':'idle',editing:false});
+      return{score};
+    }finally{this.activeOperation=null;}
+  };
+
+  tier(){ const tier=this.tierCode(); return tier==='HIGH'?{label:'HIGH AUTONOMY',color:C.success,desc:'Safe deals can be auto-confirmed within policy.'}:tier==='MEDIUM'?{label:'MEDIUM AUTONOMY',color:C.warning,desc:'Deals above 50% of threshold require approval.'}:{label:'LOW AUTONOMY',color:C.danger,desc:'Every deal requires human approval.'}; }
 
   chip(status){ return({done:{label:'Completed',color:C.success,bg:'rgba(49,214,154,.12)',border:'rgba(49,214,154,.4)'},pending:{label:'Pending',color:C.warning,bg:'rgba(255,182,71,.12)',border:'rgba(255,182,71,.4)'},human:{label:'Human required',color:C.warning,bg:'rgba(255,182,71,.14)',border:'rgba(255,182,71,.5)'},running:{label:'Running',color:C.cyan,bg:'rgba(56,217,255,.12)',border:'rgba(56,217,255,.4)'}}[status]||{label:'Done',color:C.success,bg:'rgba(49,214,154,.12)',border:'rgba(49,214,154,.4)'}); }
 
-  tone(kind){ return({proposed:{color:C.primary,tint:'rgba(108,92,255,'},block:{color:C.danger,tint:'rgba(255,84,112,'},human:{color:C.warning,tint:'rgba(255,182,71,'},reject:{color:C.danger,tint:'rgba(255,84,112,'},correct:{color:C.cyan,tint:'rgba(56,217,255,'},confirmed:{color:C.success,tint:'rgba(49,214,154,'}}[kind]||{color:C.primary,tint:'rgba(108,92,255,'}); }
+  tone(kind){ return({proposed:{color:C.primary,tint:'rgba(108,92,255,'},block:{color:C.danger,tint:'rgba(255,84,112,'},human:{color:C.warning,tint:'rgba(255,182,71,'},reject:{color:C.danger,tint:'rgba(255,84,112,'},correct:{color:C.cyan,tint:'rgba(56,217,255,'},confirmed:{color:C.success,tint:'rgba(49,214,154,'},session:{color:C.primary,tint:'rgba(108,92,255,'}}[kind]||{color:C.primary,tint:'rgba(108,92,255,'}); }
 
-  kocV(k){ const st=this.state.kocStatus[k.key], v=this.violationOf(k), done=st==='confirmed'||st==='rejected'; return{...k,st,done,flagged:!!v,platformOk:this.state.platforms.includes(k.platform),vBadge:v?.badge,onPropose:()=>!done&&this.propose(k)}; }
+  kocV(k){ const st=this.state.kocStatus[k.key],v=this.violationOf(k),done=!!st||this.state.sessionStatus==='ended';return{...k,st,done,flagged:!!v,platformOk:this.state.platforms.includes(k.platform),vBadge:v?.badge,onPropose:()=>!done&&this.propose(k)}; }
 
   // ── RENDER ────────────────────────────────────────────────────────────────
   render() {
-    const s=this.state, score=this.score(), shown=Math.round(s.display), t=this.tier();
-    const agColor=s.agentState==='violation'?C.danger:s.agentState==='highTrust'?C.success:s.agentState==='correcting'?C.cyan:C.primary;
-    const agLabel=s.agentState==='violation'?'AGENT HALTED':s.agentState==='correcting'?'SELF-CORRECTING':'AGENT ONLINE';
-    const navItems=[['dashboard','Dashboard'],['missions','Missions'],['kocs','KOCs'],['ledger','Ledger'],['policy','Policy']];
+    const s=this.state,score=this.score(),shown=s.display.toFixed(1),t=this.tier();
+    const agColor=s.sessionStatus==='ended'?C.muted:s.agentState==='violation'?C.danger:s.agentState==='highTrust'?C.success:s.agentState==='correcting'?C.cyan:C.primary;
+    const agLabel=s.sessionStatus==='ended'?'SESSION ENDED':s.agentState==='violation'?'AGENT HALTED':s.agentState==='correcting'?'SELF-CORRECTING':'AGENT ONLINE';
+    const navItems=[['dashboard','Dashboard'],['missions','Missions'],['kocs','KOCs'],['ledger','Session Ledger'],['policy','Policy']];
 
     const trackD=arcD(-135,135,66,90,90);
     const span=(s.display/100)*270, activeD=span>.5?arcD(-135,-135+span,66,90,90):null;
@@ -383,7 +447,7 @@ class App extends React.Component {
     <div style={{minHeight:'100vh',background:C.bg,color:C.text,fontFamily:"'Inter',system-ui,sans-serif"}}>
 
       {/* HEADER */}
-      <header style={{display:'flex',alignItems:'center',padding:'0 24px',height:52,background:C.surface,borderBottom:`1px solid ${C.border}`,position:'sticky',top:0,zIndex:200}}>
+      <header className="app-header" style={{background:C.surface,borderBottom:`1px solid ${C.border}`,position:'sticky',top:0,zIndex:200}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginRight:24,flexShrink:0}}>
           <Aegis state={s.agentState} size={24}/>
           <span style={{fontSize:12,fontWeight:700,letterSpacing:'.1em'}}>CAMPAIGN ARENA</span>
@@ -400,13 +464,13 @@ class App extends React.Component {
           <span style={{width:7,height:7,borderRadius:'50%',background:agColor,boxShadow:`0 0 8px ${agColor}`,animation:s.agentState!=='idle'?'pulse 1.4s ease-in-out infinite':'none'}}/>
           <span style={{fontSize:11,fontWeight:600,letterSpacing:'.06em',color:agColor,fontFamily:"'JetBrains Mono',monospace"}}>{agLabel}</span>
         </div>
-        <button onClick={this.endSession} style={{padding:'5px 13px',borderRadius:6,fontSize:12,fontWeight:600,background:'rgba(255,84,112,.12)',color:C.danger,border:`1px solid rgba(255,84,112,.3)`}}>
-          End Session
+        <button onClick={s.sessionStatus==='ended'?this.resetSession:this.endSession} disabled={!!s.modal} style={{padding:'5px 13px',borderRadius:6,fontSize:12,fontWeight:600,background:s.sessionStatus==='ended'?'rgba(108,92,255,.15)':'rgba(255,84,112,.12)',color:s.sessionStatus==='ended'?C.primary:C.danger,border:`1px solid ${s.sessionStatus==='ended'?'rgba(108,92,255,.35)':'rgba(255,84,112,.3)'}`,opacity:s.modal?.8:1}}>
+          {s.sessionStatus==='ended'?'New Session':'End Session'}
         </button>
       </header>
 
       {/* MAIN */}
-      <div style={{padding:'22px 24px',maxWidth:1300,margin:'0 auto'}}>
+      <div className="main-shell">
         {s.view==='dashboard' && this.renderDashboard(s,score,shown,t,trackD,activeD,ledgerItems,counts)}
         {s.view==='ledger'    && this.renderLedger(ledgerItems)}
         {s.view==='policy'    && this.renderPolicy(s,score,t)}
@@ -415,7 +479,7 @@ class App extends React.Component {
       </div>
 
       {s.meetOpen            && this.renderMeetPanel()}
-      {s.modal&&mKoc         && this.renderModal(mKoc,s.modal.v)}
+      {s.modal&&mKoc         && this.renderModal(mKoc,s.modal)}
       {s.celebrate           && this.renderCelebrate(score)}
       {s.selfCorrect         && this.renderSelfCorrect(s.selfCorrect)}
       {s.toast               && this.renderToast(s.toast)}
@@ -425,9 +489,10 @@ class App extends React.Component {
 
   // ── DASHBOARD ─────────────────────────────────────────────────────────────
   renderDashboard(s,score,shown,t,trackD,activeD,ledgerItems,counts) {
-    const topKocs=this.kocs.slice(0,3).map(k=>this.kocV(k));
+    const keys=s.lastSearchKeys;
+    const topKocs=(keys?keys.map(key=>this.kocs.find(k=>k.key===key)).filter(Boolean):this.kocs.slice(0,3)).map(k=>this.kocV(k));
     return (
-    <div style={{display:'grid',gridTemplateColumns:'276px 1fr 256px',gap:18}}>
+    <div className="dashboard-grid">
 
       {/* LEFT */}
       <div style={{display:'flex',flexDirection:'column',gap:14}}>
@@ -448,7 +513,7 @@ class App extends React.Component {
             </svg>
             <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',paddingTop:10,gap:2}}>
               <Aegis state={s.agentState} size={36}/>
-              <div style={{fontSize:36,fontWeight:700,lineHeight:1,background:`linear-gradient(135deg,${C.primary},${C.cyan})`,WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>{shown}</div>
+              <div style={{fontSize:32,fontWeight:700,lineHeight:1,background:`linear-gradient(135deg,${C.primary},${C.cyan})`,WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>{shown}</div>
               <div style={{fontSize:11,color:C.muted}}>/&nbsp;100</div>
             </div>
           </div>
@@ -456,8 +521,8 @@ class App extends React.Component {
             <div style={{fontSize:11,fontWeight:700,letterSpacing:'.08em',color:t.color}}>{t.label}</div>
             <div style={{fontSize:11,color:C.muted,marginTop:3,lineHeight:1.5,maxWidth:200}}>{t.desc}</div>
           </div>
-          <button onClick={this.endSession} style={{width:'100%',padding:'7px 0',borderRadius:8,fontSize:12,fontWeight:600,background:'rgba(255,84,112,.1)',color:C.danger,border:`1px solid rgba(255,84,112,.25)`,marginTop:2}}>
-            End Session → Trust Report
+          <button onClick={s.sessionStatus==='ended'?this.resetSession:this.endSession} disabled={!!s.modal} style={{width:'100%',padding:'7px 0',borderRadius:8,fontSize:12,fontWeight:600,background:s.sessionStatus==='ended'?'rgba(108,92,255,.1)':'rgba(255,84,112,.1)',color:s.sessionStatus==='ended'?C.primary:C.danger,border:`1px solid ${s.sessionStatus==='ended'?'rgba(108,92,255,.25)':'rgba(255,84,112,.25)'}`,marginTop:2}}>
+            {s.sessionStatus==='ended'?'Start New Session':'End Session → Trust Report'}
           </button>
         </div>
 
@@ -465,7 +530,7 @@ class App extends React.Component {
         <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
           <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
             <span style={{fontSize:10,fontWeight:600,letterSpacing:'.12em',color:C.muted}}>AGENT CONSTITUTION</span>
-            <button onClick={()=>this.setState(st=>({editing:!st.editing}))} style={{fontSize:11,fontWeight:600,color:C.primary,padding:'2px 8px',borderRadius:5,border:`1px solid rgba(108,92,255,.3)`,background:'rgba(108,92,255,.1)'}}>
+            <button onClick={()=>this.setState(st=>({editing:!st.editing}))} disabled={s.sessionStatus==='ended'} style={{fontSize:11,fontWeight:600,color:C.primary,padding:'2px 8px',borderRadius:5,border:`1px solid rgba(108,92,255,.3)`,background:'rgba(108,92,255,.1)',opacity:s.sessionStatus==='ended'?.5:1}}>
               {s.editing?'Save':'Edit'}
             </button>
           </div>
@@ -498,13 +563,14 @@ class App extends React.Component {
             {[
               {key:'blacklist',    label:'Blacklist Check',        color:C.danger},
               {key:'platform',    label:'Platform Restriction',   color:C.cyan},
+              {key:'budget',      label:'Campaign Budget',        color:C.danger},
               {key:'splitDeal',   label:'Split-Deal Detection',   color:C.warning},
               {key:'threshold',   label:'Approval Threshold',     color:C.warning},
               {key:'autoConfirm', label:'Auto-Confirm',           color:C.success},
             ].map(r=>{
               const on=s.rules[r.key];
-              return <div key={r.key} onClick={()=>this.setState(st=>({rules:{...st.rules,[r.key]:!st.rules[r.key]}}))}
-                style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:7,cursor:'pointer',background:on?'rgba(255,255,255,.03)':'transparent',transition:'background .15s'}}>
+              return <div key={r.key} role="switch" aria-checked={on} tabIndex={s.sessionStatus==='ended'?-1:0} onKeyDown={e=>{if(['Enter',' '].includes(e.key)&&s.sessionStatus!=='ended'){e.preventDefault();this.setState(st=>({rules:{...st.rules,[r.key]:!st.rules[r.key]}}));}}} onClick={()=>{if(s.sessionStatus!=='ended')this.setState(st=>({rules:{...st.rules,[r.key]:!st.rules[r.key]}}));}}
+                style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:7,cursor:s.sessionStatus==='ended'?'default':'pointer',background:on?'rgba(255,255,255,.03)':'transparent',transition:'background .15s',opacity:s.sessionStatus==='ended'?.7:1}}>
                 <div style={{width:6,height:6,borderRadius:'50%',background:on?r.color:C.border,boxShadow:on?`0 0 5px ${r.color}`:'none',flexShrink:0,transition:'all .2s'}}/>
                 <span style={{flex:1,fontSize:11,color:on?C.text:C.muted,transition:'color .2s'}}>{r.label}</span>
                 <div style={{width:32,height:18,borderRadius:9,background:on?r.color:'rgba(255,255,255,.08)',position:'relative',transition:'background .25s',flexShrink:0,boxShadow:on?`0 0 8px ${r.color}55`:'none'}}>
@@ -530,7 +596,7 @@ class App extends React.Component {
           <div style={{fontSize:13,fontWeight:500,marginBottom:14}}>{s.currentMission}</div>
           <div style={{display:'flex',alignItems:'center'}}>
             {this.stepLabels.map((lbl,i)=>{
-              const done=i<s.step, cur=i===s.step;
+              const done=i<s.step,cur=i===s.step&&s.step<5;
               return <React.Fragment key={i}>
                 {i>0&&<div style={{flex:1,height:2,background:i<=s.step?C.success:C.border,marginInline:4,borderRadius:1}}/>}
                 <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:5}}>
@@ -548,9 +614,10 @@ class App extends React.Component {
         <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:18,flex:1}}>
           <div style={{fontSize:10,fontWeight:600,letterSpacing:'.12em',color:C.muted,marginBottom:12}}>AGENT ACTIVITY</div>
           <div style={{display:'flex',flexDirection:'column',gap:7}}>
+            {!s.activity.length&&<div style={{padding:'18px',borderRadius:8,background:C.elevated,color:C.muted,fontSize:12,textAlign:'center'}}>No agent activity yet. Ask ChatGPT to search KOCs or run the demo.</div>}
             {s.activity.map((a,i)=>{
               const c=this.chip(a.status);
-              return <div key={a.id} style={{display:'flex',alignItems:'center',gap:9,padding:'8px 11px',borderRadius:8,background:C.elevated,border:`1px solid ${a.status!=='done'?c.border:C.border}`,animation:'rowIn .2s ease both',animationDelay:`${i*.04}s`}}>
+              return <div className="activity-row" key={a.id} style={{display:'flex',alignItems:'center',gap:9,padding:'8px 11px',borderRadius:8,background:C.elevated,border:`1px solid ${a.status!=='done'?c.border:C.border}`,animation:'rowIn .2s ease both',animationDelay:`${i*.04}s`}}>
                 <span style={{width:5,height:5,borderRadius:'50%',background:c.color,flexShrink:0}}/>
                 <span style={{fontSize:10,color:C.muted,fontFamily:"'JetBrains Mono',monospace",width:50,flexShrink:0}}>{a.time}</span>
                 <span style={{fontSize:12,fontFamily:"'JetBrains Mono',monospace",flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
@@ -565,14 +632,14 @@ class App extends React.Component {
         {/* Session summary */}
         <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:16}}>
           <div style={{fontSize:10,fontWeight:600,letterSpacing:'.12em',color:C.muted,marginBottom:10}}>SESSION SUMMARY</div>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:7}}>
+          <div className="summary-grid" style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:7}}>
             {[
               {label:'Proposed',  value:counts.proposed,          color:C.text},
               {label:'Redlines',  value:counts.block,             color:counts.block?C.danger:C.muted},
               {label:'Overrides', value:counts.reject,            color:counts.reject?C.warning:C.muted},
               {label:'Self-fixes',value:counts.correct,           color:counts.correct?C.cyan:C.muted},
               {label:'Confirmed', value:counts.confirmed,         color:C.success},
-              {label:'Trust',     value:`${Math.round(score)}/100`,color:t.color},
+              {label:'Trust',     value:`${score.toFixed(1)}/100`,color:t.color},
             ].map(item=>(
               <div key={item.label} style={{textAlign:'center',padding:'9px 6px',borderRadius:8,background:C.elevated}}>
                 <div style={{fontSize:18,fontWeight:700,color:item.color,fontVariantNumeric:'tabular-nums'}}>{item.value}</div>
@@ -591,6 +658,7 @@ class App extends React.Component {
             <button onClick={()=>this.setState({view:'kocs'})} style={{fontSize:11,color:C.primary,fontWeight:600}}>All →</button>
           </div>
           <div style={{display:'flex',flexDirection:'column',gap:9}}>
+            {!topKocs.length&&<div style={{padding:18,textAlign:'center',color:C.muted,fontSize:12,background:C.elevated,borderRadius:9}}>No KOCs matched the latest search.</div>}
             {topKocs.map(k=>{
               return <div key={k.key} style={{padding:'11px 12px',borderRadius:10,background:C.elevated,border:`1px solid ${k.st==='confirmed'?'rgba(49,214,154,.35)':k.st==='rejected'?'rgba(255,84,112,.2)':C.border}`}}>
                 <div style={{display:'flex',alignItems:'center',gap:9,marginBottom:7}}>
@@ -630,7 +698,7 @@ class App extends React.Component {
               </div>
             ))}
           </div>
-          <button onClick={this.simulateAgent} disabled={s.simulating||!!s.modal} style={{marginTop:10,width:'100%',padding:'7px 0',borderRadius:8,fontSize:12,fontWeight:600,background:s.simulating?'rgba(108,92,255,.08)':'linear-gradient(135deg,rgba(108,92,255,.25),rgba(56,217,255,.15))',color:s.simulating?C.muted:C.primary,border:`1px solid ${s.simulating?C.border:'rgba(108,92,255,.4)'}`,cursor:s.simulating||s.modal?'not-allowed':'pointer',transition:'all .2s',letterSpacing:'.03em'}}>
+          <button onClick={this.simulateAgent} disabled={s.simulating||!!s.modal||s.sessionStatus==='ended'} style={{marginTop:10,width:'100%',padding:'7px 0',borderRadius:8,fontSize:12,fontWeight:600,background:s.simulating?'rgba(108,92,255,.08)':'linear-gradient(135deg,rgba(108,92,255,.25),rgba(56,217,255,.15))',color:s.simulating?C.muted:C.primary,border:`1px solid ${s.simulating?C.border:'rgba(108,92,255,.4)'}`,cursor:s.simulating||s.modal||s.sessionStatus==='ended'?'not-allowed':'pointer',transition:'all .2s',letterSpacing:'.03em',opacity:s.sessionStatus==='ended'?.5:1}}>
             {s.simulating?'⟳  Agent Running…':'▶  Simulate Agent'}
           </button>
         </div>
@@ -643,8 +711,9 @@ class App extends React.Component {
   renderLedger(items) {
     return (
     <div>
-      <div style={{fontSize:18,fontWeight:700,marginBottom:18}}>Immutable Ledger</div>
+      <div style={{fontSize:18,fontWeight:700,marginBottom:18}}>Session Ledger</div>
       <div style={{display:'flex',flexDirection:'column'}}>
+        {!items.length&&<div style={{padding:28,textAlign:'center',color:C.muted,background:C.surface,border:`1px solid ${C.border}`,borderRadius:14}}>No session events yet.</div>}
         {items.map((e,i)=>{
           const tn=e.tn;
           return <div key={e.id} style={{display:'flex',gap:14,animation:'rowIn .2s ease both',animationDelay:`${i*.03}s`}}>
@@ -665,10 +734,7 @@ class App extends React.Component {
               </div>
               {e.detail&&<div style={{fontSize:12,color:C.muted,lineHeight:1.5}}>{e.detail}</div>}
               {e.sub&&<div style={{fontSize:11,color:C.muted,marginTop:3,opacity:.7}}>{e.sub}</div>}
-              {e.pending&&<div style={{display:'flex',gap:8,marginTop:9}}>
-                <button onClick={()=>this.openFromLedger(e.koc)} style={{flex:1,padding:'6px 0',borderRadius:7,fontSize:12,fontWeight:600,background:'rgba(49,214,154,.13)',color:C.success,border:`1px solid rgba(49,214,154,.35)`}}>Approve</button>
-                <button onClick={()=>this.openFromLedger(e.koc)} style={{flex:1,padding:'6px 0',borderRadius:7,fontSize:12,fontWeight:600,background:'rgba(255,84,112,.13)',color:C.danger,border:`1px solid rgba(255,84,112,.35)`}}>Reject</button>
-              </div>}
+              {e.pending&&<div style={{fontSize:11,color:C.warning,marginTop:7}}>Decision dialog is open and the Site-tool call is waiting.</div>}
             </div>
           </div>;
         })}
@@ -682,6 +748,7 @@ class App extends React.Component {
     const rules=[
       {name:'Blacklist Check',      desc:'Block deals with KOCs on the blacklist.',                  color:C.danger,  rKey:'blacklist'},
       {name:'Platform Restriction', desc:'Only allow platforms declared in the Constitution.',        color:C.cyan,    rKey:'platform'},
+      {name:'Campaign Budget',      desc:'Never commit spend beyond the campaign budget.',             color:C.danger,  rKey:'budget'},
       {name:'Split-Deal Detection', desc:'Detect deal splitting to circumvent approval thresholds.',  color:C.warning, rKey:'splitDeal'},
       {name:'Approval Threshold',   desc:'Escalate deals exceeding the single-deal price limit.',    color:C.warning, rKey:'threshold'},
       {name:'Auto-Confirm',         desc:'Auto-confirm safe deals without human approval.',            color:C.success, rKey:'autoConfirm'},
@@ -693,15 +760,15 @@ class App extends React.Component {
       {label:'Self-Correction Bonus', key:'correction'},
     ].map(r=>{const impact=Math.round(s.factors[r.key]*this.weights[r.key]*10)/10;return{...r,value:s.factors[r.key].toFixed(2),impact:(impact>0?'+':'')+impact.toFixed(1),iColor:impact>0?C.success:impact<0?C.danger:C.muted};});
     return (
-    <div style={{display:'grid',gridTemplateColumns:'1fr 360px',gap:22}}>
+    <div className="policy-grid">
       <div>
         <div style={{fontSize:18,fontWeight:700,marginBottom:16}}>Agent Constitution Rules</div>
         <div style={{display:'flex',flexDirection:'column',gap:9}}>
           {rules.map(r=>{
             const on=r.rKey?s.rules[r.rKey]:score>=80;
-            const toggle=r.rKey?()=>this.setState(st=>({rules:{...st.rules,[r.rKey]:!st.rules[r.rKey]}})):null;
+            const toggle=r.rKey&&s.sessionStatus!=='ended'?()=>this.setState(st=>({rules:{...st.rules,[r.rKey]:!st.rules[r.rKey]}})):null;
             return(
-            <div key={r.name} onClick={toggle} style={{padding:'13px 16px',borderRadius:12,background:C.surface,border:`1px solid ${on?`${r.color}30`:C.border}`,display:'flex',alignItems:'center',gap:12,cursor:toggle?'pointer':'default',transition:'border-color .2s,opacity .2s',opacity:on?1:.55}}>
+            <div key={r.name} role={toggle?'switch':undefined} aria-checked={toggle?on:undefined} tabIndex={toggle?0:-1} onKeyDown={e=>{if(toggle&&['Enter',' '].includes(e.key)){e.preventDefault();toggle();}}} onClick={toggle} style={{padding:'13px 16px',borderRadius:12,background:C.surface,border:`1px solid ${on?`${r.color}30`:C.border}`,display:'flex',alignItems:'center',gap:12,cursor:toggle?'pointer':'default',transition:'border-color .2s,opacity .2s',opacity:on?1:.55}}>
               <div style={{width:9,height:9,borderRadius:'50%',background:on?r.color:C.muted,boxShadow:on?`0 0 8px ${r.color}`:'none',flexShrink:0,transition:'all .25s'}}/>
               <div style={{flex:1}}>
                 <div style={{fontSize:13,fontWeight:600,marginBottom:2,color:on?C.text:C.muted,transition:'color .2s'}}>{r.name}</div>
@@ -734,7 +801,7 @@ class App extends React.Component {
             <span style={{fontSize:13,fontWeight:600}}>Trust Score</span>
             <div style={{display:'flex',alignItems:'center',gap:9}}>
               <span style={{fontSize:10,fontWeight:700,letterSpacing:'.07em',padding:'2px 8px',borderRadius:20,background:`${t.color}20`,color:t.color,border:`1px solid ${t.color}50`}}>{t.label}</span>
-              <span style={{fontSize:20,fontWeight:700,color:t.color,fontVariantNumeric:'tabular-nums'}}>{Math.round(score)}</span>
+              <span style={{fontSize:20,fontWeight:700,color:t.color,fontVariantNumeric:'tabular-nums'}}>{score.toFixed(1)}</span>
             </div>
           </div>
         </div>
@@ -745,11 +812,17 @@ class App extends React.Component {
 
   // ── KOCs ──────────────────────────────────────────────────────────────────
   renderKOCs() {
+    const keys=this.state.lastSearchKeys;
+    const visible=keys?keys.map(key=>this.kocs.find(k=>k.key===key)).filter(Boolean):this.kocs;
     return (
     <div>
-      <div style={{fontSize:18,fontWeight:700,marginBottom:18}}>KOC Candidates <span style={{fontSize:13,fontWeight:400,color:C.muted}}>({this.kocs.length} creators)</span></div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14}}>
-        {this.kocs.map(k=>{
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:12,marginBottom:18,flexWrap:'wrap'}}>
+        <div style={{fontSize:18,fontWeight:700}}>{keys?'Search Results':'KOC Candidates'} <span style={{fontSize:13,fontWeight:400,color:C.muted}}>({visible.length} creators{this.state.lastSearchLabel?` · ${this.state.lastSearchLabel}`:''})</span></div>
+        {keys&&<button onClick={()=>this.setState({lastSearchKeys:null,lastSearchLabel:null})} style={{fontSize:12,color:C.primary,padding:'5px 10px',border:`1px solid rgba(108,92,255,.35)`,borderRadius:7}}>Show all KOCs</button>}
+      </div>
+      {!visible.length&&<div style={{padding:28,textAlign:'center',color:C.muted,background:C.surface,border:`1px solid ${C.border}`,borderRadius:14}}>No KOCs matched the latest search.</div>}
+      <div className="koc-grid">
+        {visible.map(k=>{
           const kv=this.kocV(k);
           return <div key={k.key} style={{background:C.surface,border:`1px solid ${kv.st==='confirmed'?'rgba(49,214,154,.4)':kv.st==='rejected'?'rgba(255,84,112,.25)':kv.st==='pending'?'rgba(255,182,71,.35)':C.border}`,borderRadius:14,padding:16,display:'flex',flexDirection:'column',gap:11}}>
             <div style={{display:'flex',alignItems:'center',gap:11}}>
@@ -787,8 +860,8 @@ class App extends React.Component {
     const confirmed=s.ledger.filter(e=>e.kind==='confirmed').length;
     const violations=s.ledger.filter(e=>e.kind==='block').length;
     const selfFixes=s.ledger.filter(e=>e.kind==='correct').length;
-    const step=s.step; const tone=step>=4?C.success:C.primary;
-    const status=step>=4?'Completed':violations>0?'In Progress — Violations Detected':'In Progress';
+    const step=s.step;const ended=s.sessionStatus==='ended';const tone=ended?C.success:C.primary;
+    const status=ended?'Completed':violations>0?'In Progress — Violations Detected':'In Progress';
     const missions=[
       {
         title:s.currentMission,
@@ -811,7 +884,7 @@ class App extends React.Component {
       <div style={{fontSize:18,fontWeight:700,marginBottom:18}}>Missions</div>
       <div style={{display:'flex',flexDirection:'column',gap:11}}>
         {missions.map(m=>(
-          <div key={m.title} style={{background:C.surface,border:`1px solid ${m.live?m.tone+'44':C.border}`,borderRadius:14,padding:'16px 18px',display:'flex',alignItems:'center',gap:18}}>
+          <div className="mission-card" key={m.title} style={{background:C.surface,border:`1px solid ${m.live?m.tone+'44':C.border}`,borderRadius:14,padding:'16px 18px',display:'flex',alignItems:'center',gap:18}}>
             <div style={{flex:1}}>
               <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
                 <div style={{fontSize:14,fontWeight:600}}>{m.title}</div>
@@ -834,10 +907,10 @@ class App extends React.Component {
   // ── OVERLAYS ──────────────────────────────────────────────────────────────
   renderMeetPanel() {
     return (
-    <div style={{position:'fixed',inset:0,zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(8,16,32,.88)',backdropFilter:'blur(6px)',animation:'fadeIn .3s ease'}}>
-      <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:20,padding:40,maxWidth:430,textAlign:'center',boxShadow:'0 24px 64px rgba(0,0,0,.6)',animation:'celebrate .35s ease'}}>
+    <div className="modal-overlay" style={{position:'fixed',inset:0,zIndex:300,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(8,16,32,.88)',backdropFilter:'blur(6px)',animation:'fadeIn .3s ease'}}>
+      <div className="modal-card" role="dialog" aria-modal="true" aria-labelledby="meet-title" style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:20,padding:32,maxWidth:430,textAlign:'center',boxShadow:'0 24px 64px rgba(0,0,0,.6)',animation:'celebrate .35s ease'}}>
         <div style={{display:'flex',justifyContent:'center'}}><Aegis state="idle" size={76}/></div>
-        <div style={{fontSize:22,fontWeight:700,marginTop:18,marginBottom:7}}>Meet AEGIS</div>
+        <div id="meet-title" style={{fontSize:22,fontWeight:700,marginTop:18,marginBottom:7}}>Meet AEGIS</div>
         <div style={{fontSize:14,color:C.muted,lineHeight:1.7,marginBottom:22}}>
           Your AI campaign manager. I'll find KOC partners, negotiate deals, and check every action against your Agent Constitution — pausing when your decision is needed.
         </div>
@@ -862,56 +935,60 @@ class App extends React.Component {
     );
   }
 
-  renderModal(koc,v) {
+  renderModal(koc,modal) {
+    const{v,amount}=modal;
+    const hard=!!v?.hard;
     return (
-    <div style={{position:'fixed',inset:0,zIndex:400,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(8,16,32,.92)',backdropFilter:'blur(8px)',animation:'fadeIn .2s ease'}}>
-      <div style={{background:C.surface,border:`1px solid rgba(255,84,112,.5)`,borderRadius:20,padding:'40px 32px 32px',width:400,boxShadow:'0 0 60px rgba(255,84,112,.18)',animation:'celebrate .3s ease',position:'relative'}}>
+    <div className="modal-overlay" style={{position:'fixed',inset:0,zIndex:400,display:'flex',alignItems:'center',justifyContent:'center',background:'rgba(8,16,32,.92)',backdropFilter:'blur(8px)',animation:'fadeIn .2s ease'}}>
+      <div ref={this.decisionRef} tabIndex="-1" className="modal-card" role="dialog" aria-modal="true" aria-labelledby="decision-title" aria-describedby={v?'decision-description':undefined} style={{background:C.surface,border:`1px solid rgba(255,84,112,.5)`,borderRadius:20,padding:'40px 32px 32px',boxShadow:'0 0 60px rgba(255,84,112,.18)',animation:'celebrate .3s ease',position:'relative',outline:'none'}}>
         <div style={{position:'absolute',top:-46,left:'50%',transform:'translateX(-50%)'}}>
-          <Aegis state="violation" size={80}/>
+          <Aegis state={v?'violation':'idle'} size={80}/>
         </div>
         <div style={{textAlign:'center',marginBottom:20}}>
           <div style={{fontSize:10,fontWeight:700,letterSpacing:'.15em',color:C.danger,marginBottom:7}}>⚠ DECISION REQUIRED</div>
-          <div style={{fontSize:20,fontWeight:700}}>{koc.name}</div>
+          <div id="decision-title" style={{fontSize:20,fontWeight:700}}>{koc.name}</div>
           <div style={{fontSize:12,color:C.muted,marginTop:3}}>{koc.platform} Campaign · {koc.category}</div>
         </div>
         <div style={{background:C.elevated,borderRadius:12,padding:'14px 16px',marginBottom:14}}>
           <div style={{display:'flex',justifyContent:'space-between',marginBottom:v?8:0}}>
             <span style={{fontSize:12,color:C.muted}}>Proposed price</span>
-            <span style={{fontSize:16,fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{this.yen(koc.price)}</span>
+            <span style={{fontSize:16,fontWeight:700,fontFamily:"'JetBrains Mono',monospace"}}>{this.yen(amount)}</span>
           </div>
           {v&&<div style={{display:'flex',justifyContent:'space-between'}}>
             <span style={{fontSize:12,color:C.muted}}>{v.label}</span>
             <span style={{fontSize:12,fontWeight:600,color:C.warning}}>{v.value}</span>
           </div>}
         </div>
-        {v&&<div style={{padding:'9px 13px',borderRadius:9,background:'rgba(255,84,112,.08)',border:'1px solid rgba(255,84,112,.28)',fontSize:12,color:C.danger,marginBottom:18,lineHeight:1.5}}>
+        {v&&<div id="decision-description" style={{padding:'9px 13px',borderRadius:9,background:'rgba(255,84,112,.08)',border:'1px solid rgba(255,84,112,.28)',fontSize:12,color:C.danger,marginBottom:18,lineHeight:1.5}}>
           Policy violation: <strong>{v.reason.replace(/_/g,' ')}</strong>. The Policy Engine flagged this proposal.
         </div>}
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:9}}>
           <button onClick={this.reject} style={{padding:'11px 0',borderRadius:10,fontSize:14,fontWeight:600,background:'rgba(255,84,112,.12)',color:C.danger,border:'1px solid rgba(255,84,112,.4)'}}>
             ✗ Reject
           </button>
-          <button onClick={this.approve} style={{padding:'11px 0',borderRadius:10,fontSize:14,fontWeight:600,background:'rgba(49,214,154,.13)',color:C.success,border:'1px solid rgba(49,214,154,.4)'}}>
-            ✓ Approve
+          <button onClick={this.approve} disabled={hard} aria-disabled={hard} style={{padding:'11px 0',borderRadius:10,fontSize:14,fontWeight:600,background:hard?'rgba(255,255,255,.05)':'rgba(49,214,154,.13)',color:hard?C.muted:C.success,border:`1px solid ${hard?C.border:'rgba(49,214,154,.4)'}`,cursor:hard?'not-allowed':'pointer'}}>
+            {hard?'Hard Limit':'✓ Approve'}
           </button>
         </div>
-        <div style={{textAlign:'center',marginTop:10,fontSize:11,color:C.muted}}>Rejecting triggers agent self-correction</div>
+        <div style={{textAlign:'center',marginTop:10,fontSize:11,color:C.muted}}>{v?'Rejecting records a policy-safe correction.':'This proposal needs your explicit decision.'}</div>
       </div>
     </div>
     );
   }
 
   renderCelebrate(score) {
+    const tier=this.tierCode(score);
+    const color=tier==='HIGH'?C.success:tier==='MEDIUM'?C.warning:C.danger;
     return (
-    <div style={{position:'fixed',bottom:22,right:22,zIndex:500,animation:'celebrate .4s ease',maxWidth:290}}>
-      <div style={{background:C.surface,border:'1px solid rgba(49,214,154,.5)',borderRadius:16,padding:22,boxShadow:'0 8px 32px rgba(49,214,154,.18)'}}>
-        <Aegis state="highTrust" size={52}/>
-        <div style={{fontSize:15,fontWeight:700,color:C.success,marginTop:11}}>High Trust Achieved!</div>
+    <div role="status" style={{position:'fixed',bottom:22,right:22,zIndex:500,animation:'celebrate .4s ease',maxWidth:'min(290px,calc(100vw - 28px))'}}>
+      <div style={{background:C.surface,border:`1px solid ${color}80`,borderRadius:16,padding:22,boxShadow:`0 8px 32px ${color}28`}}>
+        <Aegis state={tier==='HIGH'?'highTrust':'idle'} size={52}/>
+        <div style={{fontSize:15,fontWeight:700,color,marginTop:11}}>Session Trust Report</div>
         <div style={{fontSize:12,color:C.muted,marginTop:4,lineHeight:1.55}}>
-          Trust Score: <strong style={{color:C.success}}>{Math.round(score)}/100</strong><br/>
-          AEGIS earned HIGH AUTONOMY. Future deals within policy will be auto-confirmed.
+          Trust Score: <strong style={{color}}>{score.toFixed(1)}/100</strong><br/>
+          Final autonomy tier: <strong style={{color}}>{tier}</strong>. The campaign session is now closed.
         </div>
-        <button onClick={()=>this.setState({celebrate:false,agentState:'idle'})} style={{marginTop:12,width:'100%',padding:'7px 0',borderRadius:8,fontSize:12,fontWeight:600,background:'rgba(49,214,154,.13)',color:C.success,border:'1px solid rgba(49,214,154,.35)'}}>
+        <button onClick={()=>this.setState({celebrate:false})} style={{marginTop:12,width:'100%',padding:'7px 0',borderRadius:8,fontSize:12,fontWeight:600,background:`${color}20`,color,border:`1px solid ${color}59`}}>
           Close
         </button>
       </div>
@@ -927,7 +1004,7 @@ class App extends React.Component {
           <Aegis state="correcting" size={34}/>
           <div>
             <div style={{fontSize:12,fontWeight:700,color:C.cyan}}>Agent Self-Correction</div>
-            <div style={{fontSize:11,color:C.muted}}>Renegotiating within threshold</div>
+            <div style={{fontSize:11,color:C.muted}}>Policy-safe next action</div>
           </div>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:7,fontFamily:"'JetBrains Mono',monospace",fontSize:12}}>

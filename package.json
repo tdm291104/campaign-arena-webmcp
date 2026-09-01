@@ -1,0 +1,11 @@
+{
+  "name": "campaign-arena-webmcp",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "check": "npm run build && git diff --check"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.9"
+  }
+}
