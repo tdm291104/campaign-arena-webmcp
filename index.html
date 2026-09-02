@@ -103,7 +103,7 @@ function createSessionState({meetOpen=true}={}) {
     celebrate:false,
     toast:null,
     simulating:false,
-    currentMission:'Find Beauty KOCs for TikTok campaign',
+    currentMission:null,
     rules:{blacklist:true,platform:true,budget:true,splitDeal:true,threshold:true,autoConfirm:true},
     committed:0,
     kocStatus:{},
@@ -121,6 +121,8 @@ class App extends React.Component {
   timers  = [];
   clock   = 10*3600+41*60+6;
   activeOperation = null;
+  _deciding = false;
+  _simulating = false;
   decisionRef = React.createRef();
   state = createSessionState();
 
@@ -219,14 +221,18 @@ class App extends React.Component {
   };
 
   simulateAgent = async () => {
-    if(this.state.simulating||this.activeOperation||this.state.sessionStatus==='ended') return;
+    if(this._simulating||this.state.sessionStatus==='ended') return;
+    this._simulating=true;
     await this.setStateAsync({simulating:true});
     try{
       await this.searchKOCs({platform:'TikTok',category:'Beauty'});
       for(const key of ['luna','miyu','sakura']){
         if(!this.state.kocStatus[key]) await this.propose(this.kocs.find(k=>k.key===key));
       }
-    }finally{ await this.setStateAsync({simulating:false}); }
+    }finally{
+      this._simulating=false;
+      await this.setStateAsync({simulating:false});
+    }
   };
 
   later(fn,ms) { this.timers.push(setTimeout(fn,ms)); }
@@ -239,6 +245,7 @@ class App extends React.Component {
     this.timers=[];
     this.pending.clear();
     this.clock=10*3600+41*60+6;
+    this.priorSpend={kira:5000000};
     await this.setStateAsync(createSessionState({meetOpen:true}));
     this.tween(this.score());
   };
@@ -305,6 +312,7 @@ class App extends React.Component {
     const tier=this.tierCode();
     if(tier==='LOW') return'low_autonomy';
     if(tier==='MEDIUM'&&amount>this.state.threshold*.5) return'medium_autonomy_threshold';
+    if(!this.state.rules.threshold&&amount>this.state.threshold) return'threshold_rule_disabled';
     return null;
   }
 
@@ -332,7 +340,14 @@ class App extends React.Component {
       await this.setStateAsync({modal:{koc:koc.key,v:violation,amount,approvalReason,activityId:proposalActivity.id},agentState:violation?'violation':'idle'});
       const result=await decision;
       return violation?{status:result.approved?'approved':'rejected',violation:violation.reason}:{status:result.approved?'approved':'rejected',note:approvalReason};
-    }finally{ this.activeOperation=null; }
+    }finally{
+      if(this.pending.has(koc.key)){
+        const r=this.pending.get(koc.key);
+        this.pending.delete(koc.key);
+        r?.({approved:false});
+      }
+      this.activeOperation=null;
+    }
   };
 
   confirmProposal=async(koc,amount,human,activityId)=>{
@@ -369,17 +384,21 @@ class App extends React.Component {
   }
 
   approve=async()=>{
-    const m=this.state.modal; if(!m) return;
-    if(m.v?.hard){this.toast('Campaign budget is a hard limit. Reject this proposal.',C.danger);return;}
-    const koc=this.kocs.find(k=>k.key===m.koc);
-    await this.confirmProposal(koc,m.amount,true,m.activityId);
-    const resolve=this.pending.get(m.koc);
-    this.pending.delete(m.koc);
-    resolve?.({approved:true});
+    const m=this.state.modal; if(!m||this._deciding) return;
+    this._deciding=true;
+    try{
+      if(m.v?.hard){this.toast('Campaign budget is a hard limit. Reject this proposal.',C.danger);return;}
+      const koc=this.kocs.find(k=>k.key===m.koc);
+      await this.confirmProposal(koc,m.amount,true,m.activityId);
+      const resolve=this.pending.get(m.koc);
+      this.pending.delete(m.koc);
+      resolve?.({approved:true});
+    }finally{this._deciding=false;}
   };
 
   reject=async()=>{
-    const m=this.state.modal; if(!m) return;
+    const m=this.state.modal; if(!m||this._deciding) return;
+    this._deciding=true;
     const koc=this.kocs.find(k=>k.key===m.koc);
     const reason=m.approvalReason||m.v?.reason||'manual_approval_required';
     await this.setStateAsync(s=>({
@@ -403,11 +422,12 @@ class App extends React.Component {
     const resolve=this.pending.get(m.koc);
     this.pending.delete(m.koc);
     resolve?.({approved:false});
+    }finally{this._deciding=false;}
   };
 
   endSession=async()=>{
     if(this.state.sessionStatus==='ended') return{score:this.state.finalScore};
-    if(this.activeOperation||this.pending.size) return{error:'human_decision_pending'};
+    if(this.activeOperation||this.pending.size||this.state.simulating) return{error:'human_decision_pending'};
     this.activeOperation='end';
     try{
       const score=this.score();
@@ -424,7 +444,7 @@ class App extends React.Component {
 
   tone(kind){ return({proposed:{color:C.primary,tint:'rgba(108,92,255,'},block:{color:C.danger,tint:'rgba(255,84,112,'},human:{color:C.warning,tint:'rgba(255,182,71,'},reject:{color:C.danger,tint:'rgba(255,84,112,'},correct:{color:C.cyan,tint:'rgba(56,217,255,'},confirmed:{color:C.success,tint:'rgba(49,214,154,'},session:{color:C.primary,tint:'rgba(108,92,255,'}}[kind]||{color:C.primary,tint:'rgba(108,92,255,'}); }
 
-  kocV(k){ const st=this.state.kocStatus[k.key],v=this.violationOf(k),done=!!st||this.state.sessionStatus==='ended';return{...k,st,done,flagged:!!v,platformOk:this.state.platforms.includes(k.platform),vBadge:v?.badge,onPropose:()=>!done&&this.propose(k)}; }
+  kocV(k){ const st=this.state.kocStatus[k.key],v=this.violationOf(k),done=!!st||this.state.sessionStatus==='ended';return{...k,st,done,flagged:!!v,platformOk:this.state.platforms.includes(k.platform),vBadge:v?.badge,onPropose:()=>{if(done)return;this.propose(k).then(r=>{if(r?.error==='operation_in_progress')this.toast('Agent is busy — try again in a moment.',C.warning);});}}; }
 
   // ── RENDER ────────────────────────────────────────────────────────────────
   render() {
@@ -464,7 +484,7 @@ class App extends React.Component {
           <span style={{width:7,height:7,borderRadius:'50%',background:agColor,boxShadow:`0 0 8px ${agColor}`,animation:s.agentState!=='idle'?'pulse 1.4s ease-in-out infinite':'none'}}/>
           <span style={{fontSize:11,fontWeight:600,letterSpacing:'.06em',color:agColor,fontFamily:"'JetBrains Mono',monospace"}}>{agLabel}</span>
         </div>
-        <button onClick={s.sessionStatus==='ended'?this.resetSession:this.endSession} disabled={!!s.modal} style={{padding:'5px 13px',borderRadius:6,fontSize:12,fontWeight:600,background:s.sessionStatus==='ended'?'rgba(108,92,255,.15)':'rgba(255,84,112,.12)',color:s.sessionStatus==='ended'?C.primary:C.danger,border:`1px solid ${s.sessionStatus==='ended'?'rgba(108,92,255,.35)':'rgba(255,84,112,.3)'}`,opacity:s.modal?.8:1}}>
+        <button onClick={s.sessionStatus==='ended'?this.resetSession:this.endSession} disabled={!!s.modal||s.simulating} style={{padding:'5px 13px',borderRadius:6,fontSize:12,fontWeight:600,background:s.sessionStatus==='ended'?'rgba(108,92,255,.15)':'rgba(255,84,112,.12)',color:s.sessionStatus==='ended'?C.primary:C.danger,border:`1px solid ${s.sessionStatus==='ended'?'rgba(108,92,255,.35)':'rgba(255,84,112,.3)'}`,opacity:(s.modal||s.simulating)?.8:1}}>
           {s.sessionStatus==='ended'?'New Session':'End Session'}
         </button>
       </header>
@@ -521,7 +541,7 @@ class App extends React.Component {
             <div style={{fontSize:11,fontWeight:700,letterSpacing:'.08em',color:t.color}}>{t.label}</div>
             <div style={{fontSize:11,color:C.muted,marginTop:3,lineHeight:1.5,maxWidth:200}}>{t.desc}</div>
           </div>
-          <button onClick={s.sessionStatus==='ended'?this.resetSession:this.endSession} disabled={!!s.modal} style={{width:'100%',padding:'7px 0',borderRadius:8,fontSize:12,fontWeight:600,background:s.sessionStatus==='ended'?'rgba(108,92,255,.1)':'rgba(255,84,112,.1)',color:s.sessionStatus==='ended'?C.primary:C.danger,border:`1px solid ${s.sessionStatus==='ended'?'rgba(108,92,255,.25)':'rgba(255,84,112,.25)'}`,marginTop:2}}>
+          <button onClick={s.sessionStatus==='ended'?this.resetSession:this.endSession} disabled={!!s.modal||s.simulating} style={{width:'100%',padding:'7px 0',borderRadius:8,fontSize:12,fontWeight:600,background:s.sessionStatus==='ended'?'rgba(108,92,255,.1)':'rgba(255,84,112,.1)',color:s.sessionStatus==='ended'?C.primary:C.danger,border:`1px solid ${s.sessionStatus==='ended'?'rgba(108,92,255,.25)':'rgba(255,84,112,.25)'}`,marginTop:2,opacity:(s.modal||s.simulating)?.6:1}}>
             {s.sessionStatus==='ended'?'Start New Session':'End Session → Trust Report'}
           </button>
         </div>
@@ -593,7 +613,7 @@ class App extends React.Component {
         {/* Mission stepper */}
         <div style={{background:C.surface,border:`1px solid ${C.border}`,borderRadius:14,padding:18}}>
           <div style={{fontSize:10,fontWeight:600,letterSpacing:'.12em',color:C.muted,marginBottom:10}}>CURRENT MISSION</div>
-          <div style={{fontSize:13,fontWeight:500,marginBottom:14}}>{s.currentMission}</div>
+          <div style={{fontSize:13,fontWeight:500,marginBottom:14,color:s.currentMission?C.text:C.muted,fontStyle:s.currentMission?'normal':'italic'}}>{s.currentMission||'Awaiting searchKOCs…'}</div>
           <div style={{display:'flex',alignItems:'center'}}>
             {this.stepLabels.map((lbl,i)=>{
               const done=i<s.step,cur=i===s.step&&s.step<5;
@@ -864,7 +884,7 @@ class App extends React.Component {
     const status=ended?'Completed':violations>0?'In Progress — Violations Detected':'In Progress';
     const missions=[
       {
-        title:s.currentMission,
+        title:s.currentMission||'Awaiting searchKOCs…',
         meta:`Budget ${this.yen(s.budget)} · ${confirmed} deal${confirmed!==1?'s':''} confirmed · ${violations} violation${violations!==1?'s':''}`,
         status, done:step, tone, live:true,
       },
