@@ -399,6 +399,7 @@ class App extends React.Component {
   reject=async()=>{
     const m=this.state.modal; if(!m||this._deciding) return;
     this._deciding=true;
+    try{
     const koc=this.kocs.find(k=>k.key===m.koc);
     const reason=m.approvalReason||m.v?.reason||'manual_approval_required';
     await this.setStateAsync(s=>({
